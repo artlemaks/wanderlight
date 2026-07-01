@@ -1,0 +1,34 @@
+{
+  "name": "wanderlight",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Wanderlight — a shared, deterministic, painterly wander-world (MVP).",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace @wanderlight/client",
+    "dev:server": "npm run dev --workspace @wanderlight/server",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.1.0",
+    "vitest": "^2.0.5"
+  }
+}
