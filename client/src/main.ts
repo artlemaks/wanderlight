@@ -1,11 +1,12 @@
 import { Application, Container, Graphics } from 'pixi.js';
-import { TILE_SIZE, type Camera } from '@wanderlight/shared';
+import { SEED_VERSION, TILE_SIZE, type Camera } from '@wanderlight/shared';
 import { ChunkGridRenderer } from './world/chunkGridRenderer';
 import { TRAVELER_COLOR, TRAVELER_RADIUS_TILES } from './world/palette';
 import { updateCamera } from './world/followCamera';
 import { createTraveler, updateTraveler } from './traveler';
 import { KeyboardInput } from './input/keyboard';
 import { ClickToMove } from './input/clickToMove';
+import { capture, initAnalytics } from './analytics/posthog';
 
 /**
  * Wanderlight client bootstrap. Assembles the first playable slice from the P0 pieces:
@@ -30,6 +31,10 @@ async function boot(): Promise<void> {
     antialias: true,
   });
   document.body.appendChild(app.canvas);
+
+  // Analytics (P0-ANL-01): fire session_start once the (guarded) client is ready. No-ops until
+  // VITE_POSTHOG_KEY is set + posthog-js is installed, so it's inert in local dev.
+  void initAnalytics().then(() => capture('session_start', { seedVersion: SEED_VERSION }));
 
   // World container is panned to follow the camera; terrain sits under the traveler entity.
   const world = new Container();
