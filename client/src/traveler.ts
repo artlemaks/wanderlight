@@ -55,7 +55,11 @@ function isZero(v: Vec2): boolean {
  * Advance the traveler by `dt` seconds given this frame's input. Pure: returns a new state and
  * never mutates its arguments. `dt` is clamped to be non-negative.
  */
-export function updateTraveler(state: TravelerState, input: TravelerInput, dt: number): TravelerState {
+export function updateTraveler(
+  state: TravelerState,
+  input: TravelerInput,
+  dt: number,
+): TravelerState {
   const step = Math.max(0, dt);
   const hasKeyboard = !isZero(input.dir);
 

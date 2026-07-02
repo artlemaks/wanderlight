@@ -1,5 +1,11 @@
 import { Container, Graphics } from 'pixi.js';
-import { CHUNK_SIZE, TILE_SIZE, generateChunk, visibleChunkIds, type Camera } from '@wanderlight/shared';
+import {
+  CHUNK_SIZE,
+  TILE_SIZE,
+  generateChunk,
+  visibleChunkIds,
+  type Camera,
+} from '@wanderlight/shared';
 import { terrainColor } from './palette';
 import { diffVisibleChunks } from './chunkDiff';
 

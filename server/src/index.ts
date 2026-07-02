@@ -55,7 +55,11 @@ async function main(): Promise<void> {
 
   const address = await app.listen({ port, host: '0.0.0.0' });
   app.log.info(
-    { address, analyticsConfigured: Boolean(config.posthogKey), errorTracking: Boolean(config.sentryDsn) },
+    {
+      address,
+      analyticsConfigured: Boolean(config.posthogKey),
+      errorTracking: Boolean(config.sentryDsn),
+    },
     'server listening',
   );
 }

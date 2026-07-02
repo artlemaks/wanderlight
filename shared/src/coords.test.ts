@@ -56,10 +56,7 @@ describe('visibleChunkIds', () => {
   });
 
   it('includes every chunk the camera straddles across a boundary', () => {
-    const ids = visibleChunkIds(
-      { x: CHUNK_SIZE - 2, y: CHUNK_SIZE - 2, width: 4, height: 4 },
-      0,
-    );
+    const ids = visibleChunkIds({ x: CHUNK_SIZE - 2, y: CHUNK_SIZE - 2, width: 4, height: 4 }, 0);
     expect([...ids].sort()).toEqual(['0,0', '0,1', '1,0', '1,1']);
   });
 

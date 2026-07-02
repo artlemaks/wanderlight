@@ -29,14 +29,26 @@ describe('updateTraveler — keyboard', () => {
   });
 
   it('eases in rather than jumping to full speed on the first frame', () => {
-    const first = updateTraveler(createTraveler(), { dir: { x: 1, y: 0 }, clickTarget: null }, 1 / 60);
+    const first = updateTraveler(
+      createTraveler(),
+      { dir: { x: 1, y: 0 }, clickTarget: null },
+      1 / 60,
+    );
     expect(first.vx).toBeGreaterThan(0);
     expect(first.vx).toBeLessThan(TRAVELER_SPEED);
   });
 
   it('normalizes diagonal input so diagonal speed is not faster', () => {
-    const straight = updateTraveler(createTraveler(), { dir: { x: 1, y: 0 }, clickTarget: null }, 1 / 60);
-    const diagonal = updateTraveler(createTraveler(), { dir: { x: 1, y: 1 }, clickTarget: null }, 1 / 60);
+    const straight = updateTraveler(
+      createTraveler(),
+      { dir: { x: 1, y: 0 }, clickTarget: null },
+      1 / 60,
+    );
+    const diagonal = updateTraveler(
+      createTraveler(),
+      { dir: { x: 1, y: 1 }, clickTarget: null },
+      1 / 60,
+    );
     const straightSpeed = Math.hypot(straight.vx, straight.vy);
     const diagonalSpeed = Math.hypot(diagonal.vx, diagonal.vy);
     expect(diagonalSpeed).toBeCloseTo(straightSpeed, 6);

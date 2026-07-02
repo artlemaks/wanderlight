@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
     "dev": "npm run dev --workspace @wanderlight/client",
     "dev:server": "npm run dev --workspace @wanderlight/server",
     "build": "npm run build --workspaces --if-present",

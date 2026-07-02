@@ -40,8 +40,15 @@ export async function createAnalyticsClient(
   try {
     const specifier = 'posthog-node';
     const mod = (await import(specifier)) as {
-      PostHog: new (key: string, opts?: { host?: string }) => {
-        capture(payload: { distinctId: string; event: string; properties?: Record<string, unknown> }): void;
+      PostHog: new (
+        key: string,
+        opts?: { host?: string },
+      ) => {
+        capture(payload: {
+          distinctId: string;
+          event: string;
+          properties?: Record<string, unknown>;
+        }): void;
         shutdown(): Promise<void>;
       };
     };

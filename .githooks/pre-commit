@@ -1,0 +1,31 @@
+#!/bin/sh
+# P0-INFRA-03: format staged files with Prettier before each commit.
+#
+# Source of truth for this hook. Installed into .git/hooks/pre-commit by
+# scripts/install-git-hooks.mjs (run automatically via the `prepare` npm script,
+# or manually with `node scripts/install-git-hooks.mjs`). Kept dependency-free so
+# `npm ci` stays green — no husky/lint-staged in package.json.
+
+set -e
+
+# Collect staged, still-present files that Prettier can format.
+staged=$(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|html|yml|yaml)$' || true)
+
+[ -z "$staged" ] && exit 0
+
+# Prefer the workspace binary; skip gracefully if deps aren't installed yet.
+if [ -x node_modules/.bin/prettier ]; then
+  prettier=node_modules/.bin/prettier
+elif command -v prettier >/dev/null 2>&1; then
+  prettier=prettier
+else
+  echo "pre-commit: prettier not found (run 'npm install'); skipping format." >&2
+  exit 0
+fi
+
+# Format the staged files (respects .prettierignore) and re-stage any rewrites.
+echo "$staged" | xargs "$prettier" --write --ignore-unknown
+echo "$staged" | xargs git add
+
+exit 0

@@ -74,7 +74,12 @@ async function boot(): Promise<void> {
 
     // 2. Follow-camera eases toward centering the traveler; extent tracks the (possibly resized) viewport.
     cam = updateCamera(
-      { x: cam.x, y: cam.y, width: window.innerWidth / TILE_SIZE, height: window.innerHeight / TILE_SIZE },
+      {
+        x: cam.x,
+        y: cam.y,
+        width: window.innerWidth / TILE_SIZE,
+        height: window.innerHeight / TILE_SIZE,
+      },
       traveler.x,
       traveler.y,
       dt,

@@ -87,7 +87,13 @@ export function isTerrainType(n: number): boolean {
  * identically across Chrome/Firefox/Safari. Changing the generation algorithm changes this hash,
  * which is the signal to bump `SEED_VERSION`.
  */
-export function regionHash(seed: number, x0: number, y0: number, width: number, height: number): string {
+export function regionHash(
+  seed: number,
+  x0: number,
+  y0: number,
+  width: number,
+  height: number,
+): string {
   let acc = 0x811c9dc5 >>> 0;
   for (let y = y0; y < y0 + height; y++) {
     for (let x = x0; x < x0 + width; x++) {

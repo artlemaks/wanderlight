@@ -10,7 +10,10 @@ describe('createErrorReporter', () => {
   it('falls back to noop (with a warning) when @sentry/node is not installed', async () => {
     const log = { warn: vi.fn() };
     // A DSN is set but the optional package isn't installed here → guarded fallback.
-    const reporter = await createErrorReporter('https://examplePublicKey@o0.ingest.sentry.io/0', log);
+    const reporter = await createErrorReporter(
+      'https://examplePublicKey@o0.ingest.sentry.io/0',
+      log,
+    );
     expect(reporter).toBe(noopReporter);
     expect(log.warn).toHaveBeenCalledOnce();
   });

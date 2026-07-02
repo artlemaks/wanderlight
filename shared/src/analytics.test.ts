@@ -31,7 +31,11 @@ describe('analyticsEvent', () => {
   });
 
   it('shapes a purchase event with the full monetization contract', () => {
-    const event = analyticsEvent('purchase', { sku: 'trail_pass_s1', amountMinor: 499, currency: 'USD' });
+    const event = analyticsEvent('purchase', {
+      sku: 'trail_pass_s1',
+      amountMinor: 499,
+      currency: 'USD',
+    });
     expect(event.name).toBe('purchase');
     expect(event.properties).toEqual({ sku: 'trail_pass_s1', amountMinor: 499, currency: 'USD' });
   });

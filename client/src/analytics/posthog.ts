@@ -1,4 +1,8 @@
-import { analyticsEvent, type AnalyticsEventName, type AnalyticsEventProps } from '@wanderlight/shared';
+import {
+  analyticsEvent,
+  type AnalyticsEventName,
+  type AnalyticsEventProps,
+} from '@wanderlight/shared';
 
 /**
  * Client analytics (P0-ANL-01) — a guarded seam over posthog-js.
@@ -67,7 +71,10 @@ export async function initAnalytics(): Promise<void> {
  * Capture a typed analytics event. No-op until {@link initAnalytics} has successfully configured a
  * client. The compiler enforces that `properties` matches `name`'s contract.
  */
-export function capture<E extends AnalyticsEventName>(name: E, properties: AnalyticsEventProps[E]): void {
+export function capture<E extends AnalyticsEventName>(
+  name: E,
+  properties: AnalyticsEventProps[E],
+): void {
   const event = analyticsEvent(name, properties);
   client?.capture(event.name, { ...event.properties });
 }

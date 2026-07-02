@@ -14,8 +14,7 @@ export interface AppConfig {
 
 type EnvSource = Record<string, string | undefined>;
 
-const nodeEnv: EnvSource =
-  typeof process !== 'undefined' && process.env ? process.env : {};
+const nodeEnv: EnvSource = typeof process !== 'undefined' && process.env ? process.env : {};
 
 /** Read known configuration keys from an env source (defaults to `process.env` when present). */
 export function loadConfig(env: EnvSource = nodeEnv): AppConfig {
