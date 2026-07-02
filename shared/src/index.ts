@@ -5,3 +5,5 @@ export * from './rng';
 export * from './terrain';
 export * from './landmarks';
 export * from './analytics';
+export * from './traces';
+export * from './economy';
