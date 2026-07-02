@@ -17,9 +17,17 @@ import {
   footpathTileKey,
   footfallWarmth,
   FOOTPATH_TILE_RESOLUTION,
+  attunementLevel,
+  cosmeticsOwnedAtLevel,
+  defaultEquipped,
+  ATTUNEMENT_EARN,
   type Trace,
   type JournalEvent,
+  type AppreciationNotice,
+  type CosmeticCategory,
+  type AttunementEarnKind,
 } from '@wanderlight/shared';
+import { randomUUID as uuid } from 'node:crypto';
 import type {
   AppreciateResult,
   ClaimGiftResult,
@@ -28,6 +36,7 @@ import type {
   Player,
   Repository,
   ShrineRow,
+  UpgradeResult,
 } from './types';
 
 export function createMemoryRepository(): Repository {
@@ -49,11 +58,31 @@ export function createMemoryRepository(): Repository {
   const journal = new Map<string, JournalEvent[]>();
   /** Set of `${playerId}:${moteId}` keys enforcing mote-collection idempotency. */
   const moteCollects = new Set<string>();
+  /** Normalized email → player id (P3-SRV-01 linking). */
+  const playersByEmail = new Map<string, string>();
+  /** Appreciation notices per author, newest-appended (P3-SRV-04). */
+  const notices: AppreciationNotice[] = [];
 
+  /** Stored players hold `cosmeticsOwned` as *explicit* grants only; materialize adds derived ones. */
   function put(player: Player): Player {
     players.set(player.id, player);
     playersByToken.set(player.deviceToken, player.id);
+    if (player.email) playersByEmail.set(player.email, player.id);
     return player;
+  }
+
+  /** Return shape: fold attunement-earned cosmetics into `cosmeticsOwned` (derived on read). */
+  function materialize(player: Player): Player {
+    const earned = cosmeticsOwnedAtLevel(attunementLevel(player.attunement));
+    const owned = new Set<string>([...player.cosmeticsOwned, ...earned]);
+    return { ...player, cosmeticsOwned: [...owned] };
+  }
+
+  /** Raise a player's attunement by the earn value for `kind` (P3-SRV-05). No-op if the player is gone. */
+  function raiseAttunement(playerId: string, kind: AttunementEarnKind): void {
+    const p = players.get(playerId);
+    if (!p) return;
+    put({ ...p, attunement: p.attunement + ATTUNEMENT_EARN[kind] });
   }
 
   function bumpWarmth(cx: number, cy: number, delta: number): void {
@@ -64,22 +93,66 @@ export function createMemoryRepository(): Repository {
   return {
     async getOrCreatePlayerByToken(deviceToken) {
       const existingId = playersByToken.get(deviceToken);
-      if (existingId) return players.get(existingId)!;
+      if (existingId) return materialize(players.get(existingId)!);
       const { STARTING_MOTES, STARTING_GIFT_CHARGES } = await import('@wanderlight/shared');
-      return put({
-        id: randomUUID(),
-        deviceToken,
-        email: null,
-        createdAt: Date.now(),
-        motes: STARTING_MOTES,
-        giftCharges: STARTING_GIFT_CHARGES,
-        cosmeticsOwned: [],
-        passTier: 'free',
-      });
+      return materialize(
+        put({
+          id: randomUUID(),
+          deviceToken,
+          email: null,
+          createdAt: Date.now(),
+          motes: STARTING_MOTES,
+          giftCharges: STARTING_GIFT_CHARGES,
+          cosmeticsOwned: [],
+          attunement: 0,
+          equipped: defaultEquipped(),
+          passTier: 'free',
+        }),
+      );
     },
 
     async getPlayerById(id) {
-      return players.get(id) ?? null;
+      const p = players.get(id);
+      return p ? materialize(p) : null;
+    },
+
+    async getPlayerByEmail(email) {
+      const id = playersByEmail.get(email);
+      return id ? materialize(players.get(id)!) : null;
+    },
+
+    async upgradePlayerToEmail(playerId, normalizedEmail): Promise<UpgradeResult> {
+      const player = players.get(playerId);
+      if (!player) throw new Error(`Unknown player ${playerId}`);
+      const ownerId = playersByEmail.get(normalizedEmail);
+      if (ownerId && ownerId !== playerId) {
+        // Link: the existing email account is canonical; re-point this device's token to it.
+        const canonical = players.get(ownerId)!;
+        playersByToken.set(player.deviceToken, canonical.id);
+        return { player: materialize(canonical), linked: true };
+      }
+      // Fresh upgrade: attach the email, keep every bit of the account's data.
+      return { player: materialize(put({ ...player, email: normalizedEmail })), linked: false };
+    },
+
+    async equipCosmetic(playerId, category: CosmeticCategory, cosmeticId) {
+      const player = players.get(playerId);
+      if (!player) throw new Error(`Unknown player ${playerId}`);
+      return materialize(
+        put({ ...player, equipped: { ...player.equipped, [category]: cosmeticId } }),
+      );
+    },
+
+    async getAppreciationNotices(authorId, onlyUnseen) {
+      return notices.filter((n) => n.authorId === authorId && (!onlyUnseen || !n.seen));
+    },
+
+    async markAppreciationNoticesSeen(authorId) {
+      for (let i = 0; i < notices.length; i += 1) {
+        if (notices[i]!.authorId === authorId && !notices[i]!.seen) {
+          notices[i] = { ...notices[i]!, seen: true };
+        }
+      }
     },
 
     async getChunkTraces(chunks, now) {
@@ -122,6 +195,8 @@ export function createMemoryRepository(): Repository {
         motes: author.motes - input.cost,
         giftCharges: author.giftCharges - (input.giftChargeCost ?? 0),
       });
+      // Placing a trace deepens the traveler's attunement (P3-SRV-05). System seeds don't count.
+      if (!trace.systemAuthored) raiseAttunement(input.authorId, 'place_trace');
       return { trace, motes: updated.motes };
     },
 
@@ -152,6 +227,16 @@ export function createMemoryRepository(): Repository {
       traces.set(traceId, updated);
       const author = players.get(trace.authorId);
       if (author) put({ ...author, motes: author.motes + rewardMotes });
+      // Retention surface: record a notice for the author + deepen their attunement (P3-SRV-04/05).
+      notices.push({
+        id: uuid(),
+        authorId: trace.authorId,
+        traceId,
+        traceType: trace.type,
+        createdAt: Date.now(),
+        seen: false,
+      });
+      raiseAttunement(trace.authorId, 'receive_appreciation');
       return { applied: true, appreciations: updated.appreciations, authorId: trace.authorId };
     },
 
@@ -167,6 +252,7 @@ export function createMemoryRepository(): Repository {
       const updatedClaimant = put({ ...claimant, motes: claimant.motes + claimReward });
       const author = players.get(trace.authorId);
       if (author) put({ ...author, motes: author.motes + authorReward });
+      raiseAttunement(claimantId, 'gift_claim');
       return { applied: true, motes: updatedClaimant.motes };
     },
 
@@ -181,10 +267,11 @@ export function createMemoryRepository(): Repository {
       const updated: Trace = { ...trace, litCount: trace.litCount + 1 };
       traces.set(traceId, updated);
       bumpWarmth(trace.chunkX, trace.chunkY, warmthDelta);
-      // First-ever lighting of this lantern earns the lighter a small bonus.
+      // First-ever lighting of this lantern earns the lighter a small bonus + attunement.
       if (updated.litCount === 1 && firstLightBonus > 0) {
         const lighter = players.get(fromId);
         if (lighter) put({ ...lighter, motes: lighter.motes + firstLightBonus });
+        raiseAttunement(fromId, 'first_light');
       }
       return { applied: true, litCount: updated.litCount };
     },
@@ -231,6 +318,7 @@ export function createMemoryRepository(): Repository {
       shrines.set(id, shrine);
       bumpWarmth(cx, cy, warmthDelta);
       const updated = put({ ...player, motes: player.motes - cost });
+      raiseAttunement(playerId, 'offering');
       return { shrine, motes: updated.motes };
     },
 

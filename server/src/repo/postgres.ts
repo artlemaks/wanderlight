@@ -16,10 +16,16 @@ import {
   footfallWarmth,
   FOOTPATH_TILE_RESOLUTION,
   STARTING_MOTES,
+  attunementLevel,
+  cosmeticsOwnedAtLevel,
+  defaultEquipped,
+  ATTUNEMENT_EARN,
   type Trace,
   type TracePayload,
   type TraceType,
   type JournalEvent,
+  type AppreciationNotice,
+  type CosmeticCategory,
 } from '@wanderlight/shared';
 import type {
   AppreciateResult,
@@ -29,6 +35,7 @@ import type {
   Player,
   Repository,
   ShrineRow,
+  UpgradeResult,
 } from './types';
 
 /** Minimal pool surface we depend on, so we don't import pg's types (guarded). */
@@ -49,6 +56,13 @@ interface PoolClient {
 }
 
 function toPlayer(r: Record<string, unknown>): Player {
+  const attunement = Number(r.attunement ?? 0);
+  const explicit = (r.cosmetics_owned as string[]) ?? [];
+  // Ownership is the union of explicit grants + everything the attunement level has unlocked.
+  const owned = new Set<string>([
+    ...explicit,
+    ...cosmeticsOwnedAtLevel(attunementLevel(attunement)),
+  ]);
   return {
     id: String(r.id),
     deviceToken: String(r.device_token),
@@ -56,8 +70,22 @@ function toPlayer(r: Record<string, unknown>): Player {
     createdAt: new Date(r.created_at as string).getTime(),
     motes: Number(r.motes),
     giftCharges: Number(r.gift_charges),
-    cosmeticsOwned: (r.cosmetics_owned as string[]) ?? [],
+    cosmeticsOwned: [...owned],
+    attunement,
+    equipped: (r.equipped as Record<CosmeticCategory, string>) ?? defaultEquipped(),
     passTier: String(r.pass_tier),
+  };
+}
+
+/** One appreciation-notice row → the shared shape. */
+function toNotice(r: Record<string, unknown>): AppreciationNotice {
+  return {
+    id: String(r.id),
+    authorId: String(r.author_id),
+    traceId: String(r.trace_id),
+    traceType: String(r.trace_type),
+    createdAt: new Date(r.created_at as string).getTime(),
+    seen: Boolean(r.seen),
   };
 }
 
@@ -116,6 +144,70 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
       return rows[0] ? toPlayer(rows[0]) : null;
     },
 
+    async getPlayerByEmail(email) {
+      const { rows } = await pool.query('SELECT * FROM player WHERE email = $1', [email]);
+      return rows[0] ? toPlayer(rows[0]) : null;
+    },
+
+    async upgradePlayerToEmail(playerId, normalizedEmail): Promise<UpgradeResult> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const owner = await client.query('SELECT * FROM player WHERE email = $1', [
+          normalizedEmail,
+        ]);
+        if (owner.rows[0] && String(owner.rows[0].id) !== playerId) {
+          // Link: re-point this device's token to the canonical email account.
+          const me = await client.query('SELECT device_token FROM player WHERE id = $1', [
+            playerId,
+          ]);
+          await client.query('UPDATE player SET device_token = $1 WHERE id = $2', [
+            `linked:${String(me.rows[0]!.device_token)}`,
+            playerId,
+          ]);
+          await client.query('UPDATE player SET device_token = $1 WHERE id = $2', [
+            String(me.rows[0]!.device_token),
+            String(owner.rows[0].id),
+          ]);
+          await client.query('COMMIT');
+          return { player: toPlayer(owner.rows[0]), linked: true };
+        }
+        const upd = await client.query('UPDATE player SET email = $1 WHERE id = $2 RETURNING *', [
+          normalizedEmail,
+          playerId,
+        ]);
+        await client.query('COMMIT');
+        return { player: toPlayer(upd.rows[0]!), linked: false };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async equipCosmetic(playerId, category: CosmeticCategory, cosmeticId) {
+      const { rows } = await pool.query(
+        `UPDATE player SET equipped = jsonb_set(equipped, $1, to_jsonb($2::text)) WHERE id = $3 RETURNING *`,
+        [`{${category}}`, cosmeticId, playerId],
+      );
+      return toPlayer(rows[0]!);
+    },
+
+    async getAppreciationNotices(authorId, onlyUnseen) {
+      const { rows } = await pool.query(
+        `SELECT * FROM appreciation_notice WHERE author_id = $1 ${onlyUnseen ? 'AND seen = false' : ''} ORDER BY created_at`,
+        [authorId],
+      );
+      return rows.map(toNotice);
+    },
+
+    async markAppreciationNoticesSeen(authorId) {
+      await pool.query('UPDATE appreciation_notice SET seen = true WHERE author_id = $1', [
+        authorId,
+      ]);
+    },
+
     async getChunkTraces(chunks, now) {
       return Promise.all(
         chunks.map(async ({ cx, cy }) => {
@@ -163,6 +255,12 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           'UPDATE player SET motes = motes - $1, gift_charges = gift_charges - $2 WHERE id = $3 RETURNING motes',
           [input.cost, input.giftChargeCost ?? 0, input.authorId],
         );
+        if (!(input.systemAuthored ?? false)) {
+          await client.query('UPDATE player SET attunement = attunement + $1 WHERE id = $2', [
+            ATTUNEMENT_EARN.place_trace,
+            input.authorId,
+          ]);
+        }
         await client.query(
           `INSERT INTO chunk_state (chunk_x, chunk_y, warmth, trace_count, updated_at)
            VALUES ($1, $2, $3, 1, now())
@@ -225,12 +323,21 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           };
         }
         const upd = await client.query(
-          'UPDATE trace SET appreciations = appreciations + 1 WHERE id = $1 RETURNING appreciations, author_id',
+          'UPDATE trace SET appreciations = appreciations + 1 WHERE id = $1 RETURNING appreciations, author_id, type',
           [traceId],
         );
         const authorId = String(upd.rows[0]!.author_id);
         await client.query('UPDATE player SET motes = motes + $1 WHERE id = $2', [
           rewardMotes,
+          authorId,
+        ]);
+        // Retention notice + attunement for the thanked author (P3-SRV-04/05).
+        await client.query(
+          'INSERT INTO appreciation_notice (author_id, trace_id, trace_type) VALUES ($1, $2, $3)',
+          [authorId, traceId, String(upd.rows[0]!.type)],
+        );
+        await client.query('UPDATE player SET attunement = attunement + $1 WHERE id = $2', [
+          ATTUNEMENT_EARN.receive_appreciation,
           authorId,
         ]);
         await client.query('COMMIT');
@@ -261,8 +368,8 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
         }
         const authorId = String(claim.rows[0]!.author_id);
         const claimant = await client.query(
-          'UPDATE player SET motes = motes + $1 WHERE id = $2 RETURNING motes',
-          [claimReward, claimantId],
+          'UPDATE player SET motes = motes + $1, attunement = attunement + $2 WHERE id = $3 RETURNING motes',
+          [claimReward, ATTUNEMENT_EARN.gift_claim, claimantId],
         );
         await client.query('UPDATE player SET motes = motes + $1 WHERE id = $2', [
           authorReward,
@@ -305,10 +412,10 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           [Number(row.chunk_x), Number(row.chunk_y), warmthDelta],
         );
         if (litCount === 1 && firstLightBonus > 0) {
-          await client.query('UPDATE player SET motes = motes + $1 WHERE id = $2', [
-            firstLightBonus,
-            fromId,
-          ]);
+          await client.query(
+            'UPDATE player SET motes = motes + $1, attunement = attunement + $2 WHERE id = $3',
+            [firstLightBonus, ATTUNEMENT_EARN.first_light, fromId],
+          );
         }
         await client.query('COMMIT');
         return { applied: true, litCount };
@@ -513,8 +620,8 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           [cx, cy, warmthDelta],
         );
         const moteRes = await client.query(
-          'UPDATE player SET motes = motes - $1 WHERE id = $2 RETURNING motes',
-          [cost, playerId],
+          'UPDATE player SET motes = motes - $1, attunement = attunement + $2 WHERE id = $3 RETURNING motes',
+          [cost, ATTUNEMENT_EARN.offering, playerId],
         );
         await client.query('COMMIT');
         return { shrine: toShrine(shrineRes.rows[0]!), motes: Number(moteRes.rows[0]!.motes) };

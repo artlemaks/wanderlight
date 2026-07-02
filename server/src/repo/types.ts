@@ -13,6 +13,8 @@ import type {
   TraceType,
   JournalEvent,
   JournalEventKind,
+  CosmeticCategory,
+  AppreciationNotice,
 } from '@wanderlight/shared';
 
 /** A player account. `deviceToken` is server-only and never leaves the API. */
@@ -24,8 +26,24 @@ export interface Player {
   readonly motes: number;
   /** Consumable charges spent to place gifts (P2-SRV-01). */
   readonly giftCharges: number;
+  /**
+   * Everything this player may equip — the union of default items, explicit grants (season/store,
+   * P4), and everything unlocked by the current {@link attunement} level (P3-SRV-05). Derived on read
+   * so attunement unlocks never need a write.
+   */
   readonly cosmeticsOwned: readonly string[];
+  /** Attunement points earned by play; drives the non-power cosmetic unlock track (P3-SRV-05). */
+  readonly attunement: number;
+  /** Currently-equipped cosmetic id per category (P3-CLI-02). */
+  readonly equipped: Record<CosmeticCategory, string>;
   readonly passTier: string;
+}
+
+/** Result of an anon→email upgrade / cross-device link (P3-SRV-02/03). */
+export interface UpgradeResult {
+  readonly player: Player;
+  /** True when the email already had an account and this device was linked to it (not a fresh upgrade). */
+  readonly linked: boolean;
 }
 
 /** Everything needed to persist a trace. Chunk coords are derived by the caller from (x, y). */
@@ -80,6 +98,30 @@ export interface Repository {
   /** Session bootstrap (P1-SRV-02): return the player for a device token, creating one if new. */
   getOrCreatePlayerByToken(deviceToken: string): Promise<Player>;
   getPlayerById(id: string): Promise<Player | null>;
+  /** Look up a player by their (normalized) email, or null (P3-SRV-01). */
+  getPlayerByEmail(email: string): Promise<Player | null>;
+
+  /**
+   * Anon→email upgrade / cross-device link (P3-SRV-02/03). If `normalizedEmail` is unused, attach it
+   * to `playerId` (data-preserving upgrade). If it already belongs to another account, re-point this
+   * player's device token to that canonical account and return it (`linked: true`) — deterministic
+   * conflict rule: the existing email account wins. Never loses the upgrading account's own data.
+   */
+  upgradePlayerToEmail(playerId: string, normalizedEmail: string): Promise<UpgradeResult>;
+
+  /**
+   * Equip an owned cosmetic in its category slot (P3-CLI-02). The caller (service) has already
+   * validated the id is real, owned, and matches `category`. Returns the updated player.
+   */
+  equipCosmetic(playerId: string, category: CosmeticCategory, cosmeticId: string): Promise<Player>;
+
+  /**
+   * The author's appreciation notices (P3-SRV-04). `onlyUnseen` limits to since-last-return notices;
+   * these feed the return summary ("N travelers thanked your signpost").
+   */
+  getAppreciationNotices(authorId: string, onlyUnseen: boolean): Promise<AppreciationNotice[]>;
+  /** Mark all of an author's notices seen (on return, after the summary is shown). */
+  markAppreciationNoticesSeen(authorId: string): Promise<void>;
 
   /**
    * Capped, freshness/appreciation/warmth-prioritized traces + warmth + aggregated footfall for each

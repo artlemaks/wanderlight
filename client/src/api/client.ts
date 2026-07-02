@@ -18,6 +18,11 @@ import type {
   ShrineOfferingResponse,
   HeatBatchResponse,
   JournalResponse,
+  UpgradeResponse,
+  CosmeticsResponse,
+  EquipResponse,
+  AppreciationSummary,
+  CosmeticCategory,
 } from '@wanderlight/shared';
 
 const DEVICE_TOKEN_HEADER = 'x-device-token';
@@ -51,6 +56,10 @@ export interface ApiClient {
   sendHeat(tiles: ReadonlyArray<{ tx: number; ty: number }>): Promise<HeatBatchResponse>;
   getJournal(): Promise<JournalResponse>;
   collectMote(moteId: string): Promise<{ applied: boolean; motes: number }>;
+  upgradeAccount(email: string): Promise<UpgradeResponse>;
+  getCosmetics(): Promise<CosmeticsResponse>;
+  equipCosmetic(category: CosmeticCategory, cosmeticId: string): Promise<EquipResponse>;
+  getNotifications(): Promise<AppreciationSummary>;
 }
 
 /**
@@ -112,6 +121,21 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
     },
     collectMote(moteId) {
       return request('/mote/collect', { method: 'POST', body: JSON.stringify({ moteId }) });
+    },
+    upgradeAccount(email) {
+      return request('/auth/upgrade', { method: 'POST', body: JSON.stringify({ email }) });
+    },
+    getCosmetics() {
+      return request('/cosmetics');
+    },
+    equipCosmetic(category, cosmeticId) {
+      return request('/cosmetics/equip', {
+        method: 'POST',
+        body: JSON.stringify({ category, cosmeticId }),
+      });
+    },
+    getNotifications() {
+      return request('/notifications');
     },
   };
 }

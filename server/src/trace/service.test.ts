@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { RATE_LIMITS } from '@wanderlight/shared';
+import { RATE_LIMITS, defaultEquipped } from '@wanderlight/shared';
 import { buildCorpus } from '../content/corpus';
 import type { Player, Repository } from '../repo/types';
 import { placeTrace } from './service';
@@ -17,6 +17,8 @@ const richPlayer: Player = {
   motes: 10_000,
   giftCharges: 3,
   cosmeticsOwned: [],
+  attunement: 0,
+  equipped: defaultEquipped(),
   passTier: 'free',
 };
 
@@ -29,6 +31,19 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
     async getPlayerById() {
       return richPlayer;
     },
+    async getPlayerByEmail() {
+      return null;
+    },
+    async upgradePlayerToEmail() {
+      return { player: richPlayer, linked: false };
+    },
+    async equipCosmetic() {
+      return richPlayer;
+    },
+    async getAppreciationNotices() {
+      return [];
+    },
+    async markAppreciationNoticesSeen() {},
     async getChunkTraces() {
       return [];
     },

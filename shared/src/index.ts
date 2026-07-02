@@ -10,3 +10,6 @@ export * from './economy';
 export * from './warmth';
 export * from './journal';
 export * from './motes';
+export * from './cosmetics';
+export * from './notifications';
+export * from './auth';
