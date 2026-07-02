@@ -73,7 +73,13 @@ export function registerTraceRoutes(
       return reply.status(status).send({ error: result.error.code, message: result.error.message });
     }
     if (result.applied) {
+      // Giver's action (activation/engagement) + the author's received-thanks retention signal
+      // (P2-ANL-01) — the two feed "% of traces receiving ≥1 appreciation" in PostHog.
       analytics.capture(player.id, analyticsEvent('appreciate_trace', { traceId: result.traceId }));
+      analytics.capture(
+        result.authorId,
+        analyticsEvent('receive_appreciation', { traceId: result.traceId }),
+      );
     }
     const body: AppreciateResponse = {
       traceId: result.traceId,

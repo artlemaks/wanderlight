@@ -120,7 +120,7 @@ export async function placeTrace(
 }
 
 export type AppreciateResultOut =
-  | { ok: true; traceId: string; appreciations: number; applied: boolean }
+  | { ok: true; traceId: string; authorId: string; appreciations: number; applied: boolean }
   | { ok: false; error: { code: 'not_found' | 'invalid'; message: string } };
 
 export async function appreciateTrace(
@@ -143,7 +143,13 @@ export async function appreciateTrace(
     await repo.recordJournalEvent(playerId, 'appreciate', traceId, now);
     await repo.recordJournalEvent(result.authorId, 'receive_appreciation', traceId, now);
   }
-  return { ok: true, traceId, appreciations: result.appreciations, applied: result.applied };
+  return {
+    ok: true,
+    traceId,
+    authorId: result.authorId,
+    appreciations: result.appreciations,
+    applied: result.applied,
+  };
 }
 
 export type ClaimGiftResultOut =
