@@ -1,12 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CHUNK_SIZE } from './constants';
-import {
-  TerrainType,
-  terrainAt,
-  generateChunk,
-  isTerrainType,
-  regionHash,
-} from './terrain';
+import { TerrainType, terrainAt, generateChunk, isTerrainType, regionHash } from './terrain';
 
 const SEED = 12345;
 

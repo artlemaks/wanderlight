@@ -1,4 +1,3 @@
-
 ## Vault memory stack
 
 This project is wired into the vault knowledge framework.
