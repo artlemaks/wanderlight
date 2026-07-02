@@ -16,6 +16,7 @@ import type {
   ClaimGiftResponse,
   LightLanternResponse,
   ShrineOfferingResponse,
+  HeatBatchResponse,
 } from '@wanderlight/shared';
 
 const DEVICE_TOKEN_HEADER = 'x-device-token';
@@ -46,6 +47,7 @@ export interface ApiClient {
   claimGift(traceId: string): Promise<ClaimGiftResponse>;
   lightLantern(traceId: string): Promise<LightLanternResponse>;
   makeOffering(x: number, y: number): Promise<ShrineOfferingResponse>;
+  sendHeat(tiles: ReadonlyArray<{ tx: number; ty: number }>): Promise<HeatBatchResponse>;
 }
 
 /**
@@ -98,6 +100,9 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
     },
     makeOffering(x, y) {
       return request('/shrine/offering', { method: 'POST', body: JSON.stringify({ x, y }) });
+    },
+    sendHeat(tiles) {
+      return request('/heat', { method: 'POST', body: JSON.stringify({ tiles }) });
     },
   };
 }
