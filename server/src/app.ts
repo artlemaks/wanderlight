@@ -13,6 +13,8 @@ import type { ErrorReporter } from './observability/reporter';
 import type { AnalyticsClient } from './observability/analytics';
 import type { Repository } from './repo/types';
 import type { Corpus } from './content/corpus';
+import type { PaymentProvider } from './payments/provider';
+import { createStubPaymentProvider } from './payments/provider';
 import { registerWorldRoutes } from './routes/world';
 import { registerTraceRoutes } from './routes/trace';
 import { registerSessionRoutes } from './routes/session';
@@ -22,12 +24,21 @@ import { registerJournalRoutes } from './routes/journal';
 import { registerAccountRoutes } from './routes/account';
 import { registerCosmeticsRoutes } from './routes/cosmetics';
 import { registerNotificationRoutes } from './routes/notifications';
+import { registerPassRoutes } from './routes/pass';
+import { registerStoreRoutes } from './routes/store';
+import { registerAdRoutes } from './routes/ads';
+import { registerReportRoutes } from './routes/report';
+import { registerAdminRoutes } from './routes/admin';
 
 export interface AppDeps {
   readonly repo: Repository;
   readonly corpus: Corpus;
   readonly analytics: AnalyticsClient;
   readonly reporter: ErrorReporter;
+  /** Guarded payment provider (P4-SRV-05); defaults to the in-process stub when omitted. */
+  readonly payments?: PaymentProvider;
+  /** Shared secret gating `/admin/*` (P4-OPS-01); omit → admin routes disabled (fail-closed). */
+  readonly adminToken?: string;
   /** Fastify logger option — defaults on; pass false to silence in tests. */
   readonly logger?: boolean;
 }
@@ -71,6 +82,13 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   registerAccountRoutes(app, deps.repo);
   registerCosmeticsRoutes(app, deps.repo);
   registerNotificationRoutes(app, deps.repo);
+
+  const payments = deps.payments ?? createStubPaymentProvider();
+  registerPassRoutes(app, deps.repo, payments);
+  registerStoreRoutes(app, deps.repo, payments);
+  registerAdRoutes(app, deps.repo);
+  registerReportRoutes(app, deps.repo);
+  registerAdminRoutes(app, deps.repo, deps.adminToken);
 
   return app;
 }

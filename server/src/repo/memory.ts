@@ -21,11 +21,19 @@ import {
   cosmeticsOwnedAtLevel,
   defaultEquipped,
   ATTUNEMENT_EARN,
+  SEASON_XP_EARN,
+  statusForAction,
   type Trace,
   type JournalEvent,
   type AppreciationNotice,
   type CosmeticCategory,
   type AttunementEarnKind,
+  type PassLane,
+  type PassReward,
+  type Report,
+  type ReportReason,
+  type ModeratorAction,
+  type AdReward,
 } from '@wanderlight/shared';
 import { randomUUID as uuid } from 'node:crypto';
 import type {
@@ -37,6 +45,10 @@ import type {
   Repository,
   ShrineRow,
   UpgradeResult,
+  GrantResult,
+  AdGrantResult,
+  PurchaseRecord,
+  ResolveReportResult,
 } from './types';
 
 export function createMemoryRepository(): Repository {
@@ -62,6 +74,14 @@ export function createMemoryRepository(): Repository {
   const playersByEmail = new Map<string, string>();
   /** Appreciation notices per author, newest-appended (P3-SRV-04). */
   const notices: AppreciationNotice[] = [];
+  /** Report queue (P4-SRV-09). */
+  const reports = new Map<string, Report>();
+  /** Rewarded-ad grant counts keyed by `${playerId}:${dayBucket}` (P4-SRV-08 daily cap). */
+  const adGrants = new Map<string, number>();
+  /** DB-side purchase ledger for reconciliation (P4-SRV-06). */
+  const purchases: Array<PurchaseRecord & { at: number }> = [];
+  /** Players who own the one-time Wayfarer's Kit (P4-SRV-04). */
+  const kitOwners = new Set<string>();
 
   /** Stored players hold `cosmeticsOwned` as *explicit* grants only; materialize adds derived ones. */
   function put(player: Player): Player {
@@ -78,16 +98,34 @@ export function createMemoryRepository(): Repository {
     return { ...player, cosmeticsOwned: [...owned] };
   }
 
-  /** Raise a player's attunement by the earn value for `kind` (P3-SRV-05). No-op if the player is gone. */
-  function raiseAttunement(playerId: string, kind: AttunementEarnKind): void {
+  /**
+   * Deepen a player's progression for a play event (P3-SRV-05 + P4-SRV-01): raises both attunement
+   * (cosmetic unlocks) and season XP (Trail Pass tiers). No-op if the player is gone.
+   */
+  function earnFromPlay(playerId: string, kind: AttunementEarnKind): void {
     const p = players.get(playerId);
     if (!p) return;
-    put({ ...p, attunement: p.attunement + ATTUNEMENT_EARN[kind] });
+    put({
+      ...p,
+      attunement: p.attunement + ATTUNEMENT_EARN[kind],
+      seasonXp: p.seasonXp + SEASON_XP_EARN[kind],
+    });
   }
 
   function bumpWarmth(cx: number, cy: number, delta: number): void {
     const id = chunkId(cx, cy);
     chunkWarmth.set(id, (chunkWarmth.get(id) ?? 0) + delta);
+  }
+
+  /** Delete a trace and fade its warmth back out of its chunk (P4-OPS-01 moderation removal). */
+  function removeTraceInternal(traceId: string): boolean {
+    const trace = traces.get(traceId);
+    if (!trace) return false;
+    traces.delete(traceId);
+    bumpWarmth(trace.chunkX, trace.chunkY, -trace.warmth);
+    const id = chunkId(trace.chunkX, trace.chunkY);
+    chunkWarmth.set(id, Math.max(0, chunkWarmth.get(id) ?? 0));
+    return true;
   }
 
   return {
@@ -107,6 +145,9 @@ export function createMemoryRepository(): Repository {
           attunement: 0,
           equipped: defaultEquipped(),
           passTier: 'free',
+          embers: 0,
+          seasonXp: 0,
+          passClaimed: [],
         }),
       );
     },
@@ -196,7 +237,7 @@ export function createMemoryRepository(): Repository {
         giftCharges: author.giftCharges - (input.giftChargeCost ?? 0),
       });
       // Placing a trace deepens the traveler's attunement (P3-SRV-05). System seeds don't count.
-      if (!trace.systemAuthored) raiseAttunement(input.authorId, 'place_trace');
+      if (!trace.systemAuthored) earnFromPlay(input.authorId, 'place_trace');
       return { trace, motes: updated.motes };
     },
 
@@ -236,7 +277,7 @@ export function createMemoryRepository(): Repository {
         createdAt: Date.now(),
         seen: false,
       });
-      raiseAttunement(trace.authorId, 'receive_appreciation');
+      earnFromPlay(trace.authorId, 'receive_appreciation');
       return { applied: true, appreciations: updated.appreciations, authorId: trace.authorId };
     },
 
@@ -252,7 +293,7 @@ export function createMemoryRepository(): Repository {
       const updatedClaimant = put({ ...claimant, motes: claimant.motes + claimReward });
       const author = players.get(trace.authorId);
       if (author) put({ ...author, motes: author.motes + authorReward });
-      raiseAttunement(claimantId, 'gift_claim');
+      earnFromPlay(claimantId, 'gift_claim');
       return { applied: true, motes: updatedClaimant.motes };
     },
 
@@ -271,7 +312,7 @@ export function createMemoryRepository(): Repository {
       if (updated.litCount === 1 && firstLightBonus > 0) {
         const lighter = players.get(fromId);
         if (lighter) put({ ...lighter, motes: lighter.motes + firstLightBonus });
-        raiseAttunement(fromId, 'first_light');
+        earnFromPlay(fromId, 'first_light');
       }
       return { applied: true, litCount: updated.litCount };
     },
@@ -318,7 +359,7 @@ export function createMemoryRepository(): Repository {
       shrines.set(id, shrine);
       bumpWarmth(cx, cy, warmthDelta);
       const updated = put({ ...player, motes: player.motes - cost });
-      raiseAttunement(playerId, 'offering');
+      earnFromPlay(playerId, 'offering');
       return { shrine, motes: updated.motes };
     },
 
@@ -361,6 +402,140 @@ export function createMemoryRepository(): Repository {
         chunkWarmth.set(id, (chunkWarmth.get(id) ?? 0) + footfallWarmth(visits));
       }
       return { samplesProcessed: batch.length, chunksTouched: visitsPerChunk.size };
+    },
+
+    // ── P4: season + Trail Pass ────────────────────────────────────────────────────────────────
+    async upgradePassTier(playerId) {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      return materialize(put({ ...p, passTier: 'premium' }));
+    },
+
+    async claimPassReward(
+      playerId,
+      lane: PassLane,
+      tier,
+      reward: PassReward,
+    ): Promise<GrantResult> {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      const key = `${lane}:${tier}`;
+      if (p.passClaimed.includes(key)) return { applied: false, player: materialize(p) };
+      const next: Player = {
+        ...p,
+        passClaimed: [...p.passClaimed, key],
+        motes: p.motes + (reward.kind === 'mote_boost' ? reward.motes : 0),
+        cosmeticsOwned:
+          reward.kind === 'cosmetic' && !p.cosmeticsOwned.includes(reward.cosmeticId)
+            ? [...p.cosmeticsOwned, reward.cosmeticId]
+            : p.cosmeticsOwned,
+      };
+      return { applied: true, player: materialize(put(next)) };
+    },
+
+    // ── P4: embers + store ─────────────────────────────────────────────────────────────────────
+    async grantEmbers(playerId, embers) {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      return materialize(put({ ...p, embers: p.embers + embers }));
+    },
+
+    async purchaseCosmetic(playerId, cosmeticId, priceEmbers): Promise<GrantResult> {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      if (p.embers < priceEmbers || p.cosmeticsOwned.includes(cosmeticId)) {
+        return { applied: false, player: materialize(p) };
+      }
+      return {
+        applied: true,
+        player: materialize(
+          put({
+            ...p,
+            embers: p.embers - priceEmbers,
+            cosmeticsOwned: [...p.cosmeticsOwned, cosmeticId],
+          }),
+        ),
+      };
+    },
+
+    async grantWayfarersKit(playerId, cosmeticId, giftCharges): Promise<GrantResult> {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      if (kitOwners.has(playerId)) return { applied: false, player: materialize(p) };
+      kitOwners.add(playerId);
+      return {
+        applied: true,
+        player: materialize(
+          put({
+            ...p,
+            giftCharges: p.giftCharges + giftCharges,
+            cosmeticsOwned: p.cosmeticsOwned.includes(cosmeticId)
+              ? p.cosmeticsOwned
+              : [...p.cosmeticsOwned, cosmeticId],
+          }),
+        ),
+      };
+    },
+
+    // ── P4: reconciliation ─────────────────────────────────────────────────────────────────────
+    async recordPurchase(_playerId, providerRef, _sku, amountUsdCents) {
+      purchases.push({ providerRef, amountUsdCents, at: Date.now() });
+    },
+
+    async getPurchaseLedger(sinceMs): Promise<PurchaseRecord[]> {
+      return purchases
+        .filter((r) => r.at >= sinceMs)
+        .map(({ providerRef, amountUsdCents }) => ({ providerRef, amountUsdCents }));
+    },
+
+    // ── P4: rewarded ads ───────────────────────────────────────────────────────────────────────
+    async grantAdReward(playerId, dayBucket, dailyCap, reward: AdReward): Promise<AdGrantResult> {
+      const p = players.get(playerId);
+      if (!p) throw new Error(`Unknown player ${playerId}`);
+      const key = `${playerId}:${dayBucket}`;
+      const used = adGrants.get(key) ?? 0;
+      if (used >= dailyCap) return { granted: false, player: materialize(p), grantsToday: used };
+      adGrants.set(key, used + 1);
+      const next: Player = {
+        ...p,
+        motes: p.motes + (reward.kind === 'motes' ? reward.amount : 0),
+        giftCharges: p.giftCharges + (reward.kind === 'gift_charge' ? reward.amount : 0),
+      };
+      return { granted: true, player: materialize(put(next)), grantsToday: used + 1 };
+    },
+
+    // ── P4: reporting + moderation ───────────────────────────────────────────────────────────────
+    async createReport(traceId, reporterId, reason: ReportReason, now): Promise<Report> {
+      const report: Report = {
+        id: uuid(),
+        traceId,
+        reporterId,
+        reason,
+        status: 'open',
+        createdAt: now,
+      };
+      reports.set(report.id, report);
+      return report;
+    },
+
+    async getOpenReports(limit) {
+      return [...reports.values()]
+        .filter((r) => r.status === 'open')
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .slice(0, Math.max(0, limit));
+    },
+
+    async resolveReport(reportId, action: ModeratorAction): Promise<ResolveReportResult | null> {
+      const report = reports.get(reportId);
+      if (!report) return null;
+      const removedTrace = action === 'remove' ? removeTraceInternal(report.traceId) : false;
+      const updated: Report = { ...report, status: statusForAction(action) };
+      reports.set(reportId, updated);
+      return { report: updated, removedTrace };
+    },
+
+    async removeTrace(traceId) {
+      return removeTraceInternal(traceId);
     },
 
     async close() {

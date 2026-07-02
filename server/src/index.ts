@@ -5,6 +5,7 @@ import { createRepository } from './repo/factory';
 import { loadCorpus } from './content/corpus';
 import { buildApp } from './app';
 import { buildScheduler } from './jobs';
+import { createPaymentProvider } from './payments/provider';
 
 // P1 server entrypoint: wires real dependencies (datastore, content corpus, guarded telemetry) into
 // the app factory and starts listening. The datastore is in-memory unless DATABASE_URL is set
@@ -16,12 +17,24 @@ async function main(): Promise<void> {
   const analytics = await createAnalyticsClient(config.posthogKey, config.posthogHost, console);
   const repo = await createRepository(config.databaseUrl, console);
   const corpus = await loadCorpus();
+  const payments = await createPaymentProvider(
+    config.paymentsProvider,
+    config.paymentsKey,
+    console,
+  );
 
-  const app = buildApp({ repo, corpus, analytics, reporter });
+  const app = buildApp({
+    repo,
+    corpus,
+    analytics,
+    reporter,
+    payments,
+    adminToken: config.adminToken,
+  });
   const port = Number(process.env.PORT ?? 3000);
 
-  // Background jobs (footpath aggregation now; fade/GC in P2-SRV-07) run on interval timers.
-  const scheduler = buildScheduler(repo, app.log);
+  // Background jobs (footpath aggregation, fade/GC, payment reconciliation) run on interval timers.
+  const scheduler = buildScheduler(repo, app.log, payments);
   scheduler.start();
 
   const shutdown = async (signal: string): Promise<void> => {

@@ -10,6 +10,12 @@ export interface AppConfig {
   readonly posthogHost: string | undefined;
   readonly sentryDsn: string | undefined;
   readonly databaseUrl: string | undefined;
+  /** Payment provider name (e.g. 'stripe'); unset → guarded stub provider (P4-SRV-05). */
+  readonly paymentsProvider: string | undefined;
+  /** Payment provider API key; unset → stub. */
+  readonly paymentsKey: string | undefined;
+  /** Shared secret gating `/admin/*` routes (P4-OPS-01); unset → admin routes disabled. */
+  readonly adminToken: string | undefined;
 }
 
 type EnvSource = Record<string, string | undefined>;
@@ -23,5 +29,8 @@ export function loadConfig(env: EnvSource = nodeEnv): AppConfig {
     posthogHost: env.POSTHOG_HOST,
     sentryDsn: env.SENTRY_DSN,
     databaseUrl: env.DATABASE_URL,
+    paymentsProvider: env.PAYMENTS_PROVIDER,
+    paymentsKey: env.PAYMENTS_KEY,
+    adminToken: env.ADMIN_TOKEN,
   };
 }

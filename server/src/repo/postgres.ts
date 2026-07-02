@@ -20,12 +20,20 @@ import {
   cosmeticsOwnedAtLevel,
   defaultEquipped,
   ATTUNEMENT_EARN,
+  SEASON_XP_EARN,
+  statusForAction,
   type Trace,
   type TracePayload,
   type TraceType,
   type JournalEvent,
   type AppreciationNotice,
   type CosmeticCategory,
+  type PassLane,
+  type PassReward,
+  type Report,
+  type ReportReason,
+  type ModeratorAction,
+  type AdReward,
 } from '@wanderlight/shared';
 import type {
   AppreciateResult,
@@ -36,6 +44,10 @@ import type {
   Repository,
   ShrineRow,
   UpgradeResult,
+  GrantResult,
+  AdGrantResult,
+  PurchaseRecord,
+  ResolveReportResult,
 } from './types';
 
 /** Minimal pool surface we depend on, so we don't import pg's types (guarded). */
@@ -74,6 +86,9 @@ function toPlayer(r: Record<string, unknown>): Player {
     attunement,
     equipped: (r.equipped as Record<CosmeticCategory, string>) ?? defaultEquipped(),
     passTier: String(r.pass_tier),
+    embers: Number(r.embers ?? 0),
+    seasonXp: Number(r.season_xp ?? 0),
+    passClaimed: (r.pass_claimed as string[]) ?? [],
   };
 }
 
@@ -86,6 +101,18 @@ function toNotice(r: Record<string, unknown>): AppreciationNotice {
     traceType: String(r.trace_type),
     createdAt: new Date(r.created_at as string).getTime(),
     seen: Boolean(r.seen),
+  };
+}
+
+/** One report row → the shared shape. */
+function toReport(r: Record<string, unknown>): Report {
+  return {
+    id: String(r.id),
+    traceId: String(r.trace_id),
+    reporterId: String(r.reporter_id),
+    reason: String(r.reason) as ReportReason,
+    status: String(r.status) as Report['status'],
+    createdAt: new Date(r.created_at as string).getTime(),
   };
 }
 
@@ -256,10 +283,10 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           [input.cost, input.giftChargeCost ?? 0, input.authorId],
         );
         if (!(input.systemAuthored ?? false)) {
-          await client.query('UPDATE player SET attunement = attunement + $1 WHERE id = $2', [
-            ATTUNEMENT_EARN.place_trace,
-            input.authorId,
-          ]);
+          await client.query(
+            'UPDATE player SET attunement = attunement + $1, season_xp = season_xp + $2 WHERE id = $3',
+            [ATTUNEMENT_EARN.place_trace, SEASON_XP_EARN.place_trace, input.authorId],
+          );
         }
         await client.query(
           `INSERT INTO chunk_state (chunk_x, chunk_y, warmth, trace_count, updated_at)
@@ -336,10 +363,10 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           'INSERT INTO appreciation_notice (author_id, trace_id, trace_type) VALUES ($1, $2, $3)',
           [authorId, traceId, String(upd.rows[0]!.type)],
         );
-        await client.query('UPDATE player SET attunement = attunement + $1 WHERE id = $2', [
-          ATTUNEMENT_EARN.receive_appreciation,
-          authorId,
-        ]);
+        await client.query(
+          'UPDATE player SET attunement = attunement + $1, season_xp = season_xp + $2 WHERE id = $3',
+          [ATTUNEMENT_EARN.receive_appreciation, SEASON_XP_EARN.receive_appreciation, authorId],
+        );
         await client.query('COMMIT');
         return { applied: true, appreciations: Number(upd.rows[0]!.appreciations), authorId };
       } catch (err) {
@@ -368,8 +395,8 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
         }
         const authorId = String(claim.rows[0]!.author_id);
         const claimant = await client.query(
-          'UPDATE player SET motes = motes + $1, attunement = attunement + $2 WHERE id = $3 RETURNING motes',
-          [claimReward, ATTUNEMENT_EARN.gift_claim, claimantId],
+          'UPDATE player SET motes = motes + $1, attunement = attunement + $2, season_xp = season_xp + $3 WHERE id = $4 RETURNING motes',
+          [claimReward, ATTUNEMENT_EARN.gift_claim, SEASON_XP_EARN.gift_claim, claimantId],
         );
         await client.query('UPDATE player SET motes = motes + $1 WHERE id = $2', [
           authorReward,
@@ -413,8 +440,8 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
         );
         if (litCount === 1 && firstLightBonus > 0) {
           await client.query(
-            'UPDATE player SET motes = motes + $1, attunement = attunement + $2 WHERE id = $3',
-            [firstLightBonus, ATTUNEMENT_EARN.first_light, fromId],
+            'UPDATE player SET motes = motes + $1, attunement = attunement + $2, season_xp = season_xp + $3 WHERE id = $4',
+            [firstLightBonus, ATTUNEMENT_EARN.first_light, SEASON_XP_EARN.first_light, fromId],
           );
         }
         await client.query('COMMIT');
@@ -620,8 +647,8 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           [cx, cy, warmthDelta],
         );
         const moteRes = await client.query(
-          'UPDATE player SET motes = motes - $1, attunement = attunement + $2 WHERE id = $3 RETURNING motes',
-          [cost, ATTUNEMENT_EARN.offering, playerId],
+          'UPDATE player SET motes = motes - $1, attunement = attunement + $2, season_xp = season_xp + $3 WHERE id = $4 RETURNING motes',
+          [cost, ATTUNEMENT_EARN.offering, SEASON_XP_EARN.offering, playerId],
         );
         await client.query('COMMIT');
         return { shrine: toShrine(shrineRes.rows[0]!), motes: Number(moteRes.rows[0]!.motes) };
@@ -631,6 +658,257 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
       } finally {
         client.release();
       }
+    },
+
+    // ── P4: season + Trail Pass ────────────────────────────────────────────────────────────────
+    async upgradePassTier(playerId) {
+      const { rows } = await pool.query(
+        `UPDATE player SET pass_tier = 'premium' WHERE id = $1 RETURNING *`,
+        [playerId],
+      );
+      return toPlayer(rows[0]!);
+    },
+
+    async claimPassReward(
+      playerId,
+      lane: PassLane,
+      tier,
+      reward: PassReward,
+    ): Promise<GrantResult> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const key = `${lane}:${tier}`;
+        const cur = await client.query('SELECT * FROM player WHERE id = $1 FOR UPDATE', [playerId]);
+        const claimed = (cur.rows[0]!.pass_claimed as string[]) ?? [];
+        if (claimed.includes(key)) {
+          await client.query('COMMIT');
+          return { applied: false, player: toPlayer(cur.rows[0]!) };
+        }
+        const upd = await client.query(
+          `UPDATE player
+             SET pass_claimed = pass_claimed || to_jsonb($1::text),
+                 motes = motes + $2,
+                 cosmetics_owned = CASE WHEN $3::text IS NOT NULL AND NOT (cosmetics_owned ? $3)
+                                        THEN cosmetics_owned || to_jsonb($3::text)
+                                        ELSE cosmetics_owned END
+           WHERE id = $4 RETURNING *`,
+          [
+            key,
+            reward.kind === 'mote_boost' ? reward.motes : 0,
+            reward.kind === 'cosmetic' ? reward.cosmeticId : null,
+            playerId,
+          ],
+        );
+        await client.query('COMMIT');
+        return { applied: true, player: toPlayer(upd.rows[0]!) };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    // ── P4: embers + store ─────────────────────────────────────────────────────────────────────
+    async grantEmbers(playerId, embers) {
+      const { rows } = await pool.query(
+        'UPDATE player SET embers = embers + $1 WHERE id = $2 RETURNING *',
+        [embers, playerId],
+      );
+      return toPlayer(rows[0]!);
+    },
+
+    async purchaseCosmetic(playerId, cosmeticId, priceEmbers): Promise<GrantResult> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const cur = await client.query('SELECT * FROM player WHERE id = $1 FOR UPDATE', [playerId]);
+        const p = cur.rows[0]!;
+        const owned = (p.cosmetics_owned as string[]) ?? [];
+        if (Number(p.embers) < priceEmbers || owned.includes(cosmeticId)) {
+          await client.query('COMMIT');
+          return { applied: false, player: toPlayer(p) };
+        }
+        const upd = await client.query(
+          `UPDATE player SET embers = embers - $1, cosmetics_owned = cosmetics_owned || to_jsonb($2::text)
+           WHERE id = $3 RETURNING *`,
+          [priceEmbers, cosmeticId, playerId],
+        );
+        await client.query('COMMIT');
+        return { applied: true, player: toPlayer(upd.rows[0]!) };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async grantWayfarersKit(playerId, cosmeticId, giftCharges): Promise<GrantResult> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const cur = await client.query('SELECT * FROM player WHERE id = $1 FOR UPDATE', [playerId]);
+        const p = cur.rows[0]!;
+        if (p.kit_owned === true) {
+          await client.query('COMMIT');
+          return { applied: false, player: toPlayer(p) };
+        }
+        const owned = (p.cosmetics_owned as string[]) ?? [];
+        const upd = await client.query(
+          `UPDATE player
+             SET kit_owned = true,
+                 gift_charges = gift_charges + $1,
+                 cosmetics_owned = CASE WHEN NOT (cosmetics_owned ? $2)
+                                        THEN cosmetics_owned || to_jsonb($2::text)
+                                        ELSE cosmetics_owned END
+           WHERE id = $3 RETURNING *`,
+          [giftCharges, cosmeticId, playerId],
+        );
+        void owned;
+        await client.query('COMMIT');
+        return { applied: true, player: toPlayer(upd.rows[0]!) };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    // ── P4: reconciliation ─────────────────────────────────────────────────────────────────────
+    async recordPurchase(playerId, providerRef, sku, amountUsdCents) {
+      await pool.query(
+        'INSERT INTO purchase (player_id, provider_ref, sku, amount_usd_cents) VALUES ($1, $2, $3, $4)',
+        [playerId, providerRef, sku, amountUsdCents],
+      );
+    },
+
+    async getPurchaseLedger(sinceMs): Promise<PurchaseRecord[]> {
+      const { rows } = await pool.query(
+        'SELECT provider_ref, amount_usd_cents FROM purchase WHERE created_at >= to_timestamp($1/1000.0)',
+        [sinceMs],
+      );
+      return rows.map((r) => ({
+        providerRef: String(r.provider_ref),
+        amountUsdCents: Number(r.amount_usd_cents),
+      }));
+    },
+
+    // ── P4: rewarded ads ───────────────────────────────────────────────────────────────────────
+    async grantAdReward(playerId, dayBucket, dailyCap, reward: AdReward): Promise<AdGrantResult> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const ins = await client.query(
+          `INSERT INTO ad_grant (player_id, day_bucket, count) VALUES ($1, $2, 0)
+           ON CONFLICT (player_id, day_bucket) DO NOTHING`,
+          [playerId, dayBucket],
+        );
+        void ins;
+        const cur = await client.query(
+          'SELECT count FROM ad_grant WHERE player_id = $1 AND day_bucket = $2 FOR UPDATE',
+          [playerId, dayBucket],
+        );
+        const used = Number(cur.rows[0]!.count);
+        if (used >= dailyCap) {
+          const p = await client.query('SELECT * FROM player WHERE id = $1', [playerId]);
+          await client.query('COMMIT');
+          return { granted: false, player: toPlayer(p.rows[0]!), grantsToday: used };
+        }
+        await client.query(
+          'UPDATE ad_grant SET count = count + 1 WHERE player_id = $1 AND day_bucket = $2',
+          [playerId, dayBucket],
+        );
+        const upd = await client.query(
+          'UPDATE player SET motes = motes + $1, gift_charges = gift_charges + $2 WHERE id = $3 RETURNING *',
+          [
+            reward.kind === 'motes' ? reward.amount : 0,
+            reward.kind === 'gift_charge' ? reward.amount : 0,
+            playerId,
+          ],
+        );
+        await client.query('COMMIT');
+        return { granted: true, player: toPlayer(upd.rows[0]!), grantsToday: used + 1 };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    // ── P4: reporting + moderation ───────────────────────────────────────────────────────────────
+    async createReport(traceId, reporterId, reason: ReportReason, now): Promise<Report> {
+      const { rows } = await pool.query(
+        `INSERT INTO report (trace_id, reporter_id, reason, status, created_at)
+         VALUES ($1, $2, $3, 'open', to_timestamp($4/1000.0)) RETURNING *`,
+        [traceId, reporterId, reason, now],
+      );
+      return toReport(rows[0]!);
+    },
+
+    async getOpenReports(limit) {
+      const { rows } = await pool.query(
+        `SELECT * FROM report WHERE status = 'open' ORDER BY created_at ASC LIMIT $1`,
+        [limit],
+      );
+      return rows.map(toReport);
+    },
+
+    async resolveReport(reportId, action: ModeratorAction): Promise<ResolveReportResult | null> {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const cur = await client.query('SELECT * FROM report WHERE id = $1 FOR UPDATE', [reportId]);
+        if (!cur.rows[0]) {
+          await client.query('COMMIT');
+          return null;
+        }
+        let removedTrace = false;
+        if (action === 'remove') {
+          const del = await client.query(
+            'DELETE FROM trace WHERE id = $1 RETURNING chunk_x, chunk_y, warmth',
+            [String(cur.rows[0].trace_id)],
+          );
+          if (del.rowCount > 0) {
+            removedTrace = true;
+            const r = del.rows[0]!;
+            await client.query(
+              `UPDATE chunk_state SET warmth = GREATEST(0, warmth - $3), updated_at = now()
+               WHERE chunk_x = $1 AND chunk_y = $2`,
+              [Number(r.chunk_x), Number(r.chunk_y), Number(r.warmth)],
+            );
+          }
+        }
+        const upd = await client.query('UPDATE report SET status = $1 WHERE id = $2 RETURNING *', [
+          statusForAction(action),
+          reportId,
+        ]);
+        await client.query('COMMIT');
+        return { report: toReport(upd.rows[0]!), removedTrace };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async removeTrace(traceId) {
+      const del = await pool.query(
+        'DELETE FROM trace WHERE id = $1 RETURNING chunk_x, chunk_y, warmth',
+        [traceId],
+      );
+      if (del.rowCount === 0) return false;
+      const r = del.rows[0]!;
+      await pool.query(
+        `UPDATE chunk_state SET warmth = GREATEST(0, warmth - $3), updated_at = now()
+         WHERE chunk_x = $1 AND chunk_y = $2`,
+        [Number(r.chunk_x), Number(r.chunk_y), Number(r.warmth)],
+      );
+      return true;
     },
 
     async close() {

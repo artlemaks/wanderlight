@@ -15,6 +15,12 @@ import type {
   JournalEventKind,
   CosmeticCategory,
   AppreciationNotice,
+  PassLane,
+  PassReward,
+  Report,
+  ReportReason,
+  ModeratorAction,
+  AdReward,
 } from '@wanderlight/shared';
 
 /** A player account. `deviceToken` is server-only and never leaves the API. */
@@ -36,7 +42,39 @@ export interface Player {
   readonly attunement: number;
   /** Currently-equipped cosmetic id per category (P3-CLI-02). */
   readonly equipped: Record<CosmeticCategory, string>;
+  /** `free` or `premium` — the Trail Pass tier (P4-SRV-02). */
   readonly passTier: string;
+  /** Bought premium currency, **separate from motes** (P4-DATA-02, guardrail §9). */
+  readonly embers: number;
+  /** Season XP earned by play, driving Trail Pass tiers (P4-SRV-01). */
+  readonly seasonXp: number;
+  /** Claimed pass-reward keys (`${lane}:${tier}`) — the claim idempotency ledger (P4-SRV-02). */
+  readonly passClaimed: readonly string[];
+}
+
+/** Result of applying a pass-reward claim / store purchase / kit grant. `applied:false` = idempotent no-op. */
+export interface GrantResult {
+  readonly applied: boolean;
+  readonly player: Player;
+}
+
+/** Result of a rewarded-ad grant attempt (P4-SRV-08). `granted:false` = daily cap reached. */
+export interface AdGrantResult {
+  readonly granted: boolean;
+  readonly player: Player;
+  readonly grantsToday: number;
+}
+
+/** A settled real-money purchase, recorded for reconciliation (P4-SRV-06). */
+export interface PurchaseRecord {
+  readonly providerRef: string;
+  readonly amountUsdCents: number;
+}
+
+/** Result of resolving a report (P4-OPS-01). */
+export interface ResolveReportResult {
+  readonly report: Report;
+  readonly removedTrace: boolean;
 }
 
 /** Result of an anon→email upgrade / cross-device link (P3-SRV-02/03). */
@@ -225,6 +263,77 @@ export interface Repository {
    * Returns a summary for perf logging.
    */
   gcTraces(now: number): Promise<{ scanned: number; removed: number }>;
+
+  // ── P4: season + Trail Pass ────────────────────────────────────────────────────────────────────
+  /** Upgrade a player to the premium Trail Pass tier (after a verified purchase). */
+  upgradePassTier(playerId: string): Promise<Player>;
+  /**
+   * Claim a pass reward at `lane`+`tier`. The service has already validated the tier is reached and
+   * the lane is permitted; `reward` is the resolved reward to apply (cosmetic grant or mote boost).
+   * Idempotent per (lane, tier) via the claimed ledger — a repeat claim is a no-op.
+   */
+  claimPassReward(
+    playerId: string,
+    lane: PassLane,
+    tier: number,
+    reward: PassReward,
+  ): Promise<GrantResult>;
+
+  // ── P4: embers + store ─────────────────────────────────────────────────────────────────────────
+  /** Credit embers to a player (after a settled real-money ember-pack purchase). */
+  grantEmbers(playerId: string, embers: number): Promise<Player>;
+  /**
+   * Buy a cosmetic with embers (P4-SRV-03). Debits `priceEmbers` and grants the cosmetic — atomically.
+   * `applied:false` when the player can't afford it or already owns it (idempotent).
+   */
+  purchaseCosmetic(playerId: string, cosmeticId: string, priceEmbers: number): Promise<GrantResult>;
+  /** Grant the one-time Wayfarer's Kit (P4-SRV-04): +daily gift charges + a cosmetic. Idempotent. */
+  grantWayfarersKit(
+    playerId: string,
+    cosmeticId: string,
+    giftCharges: number,
+  ): Promise<GrantResult>;
+
+  // ── P4: reconciliation ─────────────────────────────────────────────────────────────────────────
+  /** Record a settled real-money purchase for reconciliation (P4-SRV-06). */
+  recordPurchase(
+    playerId: string,
+    providerRef: string,
+    sku: string,
+    amountUsdCents: number,
+  ): Promise<void>;
+  /** The DB-side purchase ledger since `sinceMs` (reconciled against the provider's ledger). */
+  getPurchaseLedger(sinceMs: number): Promise<PurchaseRecord[]>;
+
+  // ── P4: rewarded ads ───────────────────────────────────────────────────────────────────────────
+  /**
+   * Grant a rewarded-ad reward if under the daily cap (P4-SRV-08). `dayBucket` scopes the cap window.
+   * Returns `granted:false` (no-op) once the cap is hit.
+   */
+  grantAdReward(
+    playerId: string,
+    dayBucket: number,
+    dailyCap: number,
+    reward: AdReward,
+  ): Promise<AdGrantResult>;
+
+  // ── P4: reporting + moderation ─────────────────────────────────────────────────────────────────
+  /** File a report against a trace (P4-SRV-09). */
+  createReport(
+    traceId: string,
+    reporterId: string,
+    reason: ReportReason,
+    now: number,
+  ): Promise<Report>;
+  /** The open report queue, oldest-first, capped (P4-OPS-01). */
+  getOpenReports(limit: number): Promise<Report[]>;
+  /**
+   * Resolve a report (P4-OPS-01): `remove` deletes the offending trace (fading its warmth) and marks
+   * the report actioned; `dismiss` just closes it. Returns null if the report id is unknown.
+   */
+  resolveReport(reportId: string, action: ModeratorAction): Promise<ResolveReportResult | null>;
+  /** Admin: remove a trace directly, fading its warmth back out of its chunk (P4-OPS-01). */
+  removeTrace(traceId: string): Promise<boolean>;
 
   /** Release any underlying resources (pg pool). No-op for in-memory. */
   close(): Promise<void>;

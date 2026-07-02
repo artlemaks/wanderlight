@@ -20,6 +20,9 @@ const richPlayer: Player = {
   attunement: 0,
   equipped: defaultEquipped(),
   passTier: 'free',
+  embers: 0,
+  seasonXp: 0,
+  passClaimed: [],
 };
 
 /** A repo stub whose counts/player are controllable; placeTrace is a stub echoing the input. */
@@ -109,6 +112,47 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
     },
     async gcTraces() {
       return { scanned: 0, removed: 0 };
+    },
+    async upgradePassTier() {
+      return richPlayer;
+    },
+    async claimPassReward() {
+      return { applied: true, player: richPlayer };
+    },
+    async grantEmbers() {
+      return richPlayer;
+    },
+    async purchaseCosmetic() {
+      return { applied: true, player: richPlayer };
+    },
+    async grantWayfarersKit() {
+      return { applied: true, player: richPlayer };
+    },
+    async recordPurchase() {},
+    async getPurchaseLedger() {
+      return [];
+    },
+    async grantAdReward() {
+      return { granted: true, player: richPlayer, grantsToday: 1 };
+    },
+    async createReport() {
+      return {
+        id: 'r',
+        traceId: 't',
+        reporterId: 'p',
+        reason: 'spam',
+        status: 'open',
+        createdAt: 0,
+      };
+    },
+    async getOpenReports() {
+      return [];
+    },
+    async resolveReport() {
+      return null;
+    },
+    async removeTrace() {
+      return true;
     },
     async close() {},
     ...over,

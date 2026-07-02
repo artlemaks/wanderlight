@@ -23,6 +23,9 @@ import type {
   EquipResponse,
   AppreciationSummary,
   CosmeticCategory,
+  StoreResponse,
+  AdRewardResponse,
+  PassLane,
 } from '@wanderlight/shared';
 
 const DEVICE_TOKEN_HEADER = 'x-device-token';
@@ -60,6 +63,17 @@ export interface ApiClient {
   getCosmetics(): Promise<CosmeticsResponse>;
   equipCosmetic(category: CosmeticCategory, cosmeticId: string): Promise<EquipResponse>;
   getNotifications(): Promise<AppreciationSummary>;
+  getStore(): Promise<StoreResponse>;
+  purchaseCosmetic(
+    cosmeticId: string,
+  ): Promise<{ ok: boolean; cosmeticId: string; embers: number }>;
+  buyEmbers(packId: string): Promise<{ embers: number }>;
+  claimPassReward(
+    lane: PassLane,
+    tier: number,
+  ): Promise<{ claimed: boolean; motes: number; owned: readonly string[] }>;
+  watchRewardedAd(): Promise<AdRewardResponse>;
+  reportTrace(traceId: string, reason: string): Promise<{ reportId: string; status: string }>;
 }
 
 /**
@@ -136,6 +150,27 @@ export function createApiClient(opts: ApiClientOptions = {}): ApiClient {
     },
     getNotifications() {
       return request('/notifications');
+    },
+    getStore() {
+      return request('/store');
+    },
+    purchaseCosmetic(cosmeticId) {
+      return request('/store/purchase', { method: 'POST', body: JSON.stringify({ cosmeticId }) });
+    },
+    buyEmbers(packId) {
+      return request('/store/embers', { method: 'POST', body: JSON.stringify({ packId }) });
+    },
+    claimPassReward(lane, tier) {
+      return request('/pass/claim', { method: 'POST', body: JSON.stringify({ lane, tier }) });
+    },
+    watchRewardedAd() {
+      return request('/ads/reward', { method: 'POST', body: JSON.stringify({ verified: true }) });
+    },
+    reportTrace(traceId, reason) {
+      return request(`/trace/${encodeURIComponent(traceId)}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ reason }),
+      });
     },
   };
 }
