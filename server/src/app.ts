@@ -17,6 +17,7 @@ import { registerWorldRoutes } from './routes/world';
 import { registerTraceRoutes } from './routes/trace';
 import { registerSessionRoutes } from './routes/session';
 import { registerShrineRoutes } from './routes/shrine';
+import { registerHeatRoutes } from './routes/heat';
 
 export interface AppDeps {
   readonly repo: Repository;
@@ -61,6 +62,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   registerWorldRoutes(app, deps.repo);
   registerTraceRoutes(app, deps.repo, deps.corpus, deps.analytics);
   registerShrineRoutes(app, deps.repo);
+  registerHeatRoutes(app, deps.repo);
 
   return app;
 }

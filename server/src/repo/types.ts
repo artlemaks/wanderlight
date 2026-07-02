@@ -75,11 +75,16 @@ export interface Repository {
   getOrCreatePlayerByToken(deviceToken: string): Promise<Player>;
   getPlayerById(id: string): Promise<Player | null>;
 
-  /** Capped, freshness/appreciation/warmth-prioritized traces + warmth for each requested chunk. */
+  /**
+   * Capped, freshness/appreciation/warmth-prioritized traces + warmth + aggregated footfall for each
+   * requested chunk. `footfall` maps a footpath-tile key to its visit count (P2-CLI-03).
+   */
   getChunkTraces(
     chunks: ReadonlyArray<{ cx: number; cy: number }>,
     now: number,
-  ): Promise<Array<{ chunkId: string; warmth: number; traces: Trace[] }>>;
+  ): Promise<
+    Array<{ chunkId: string; warmth: number; traces: Trace[]; footfall: Record<string, number> }>
+  >;
 
   /** Persist a trace, debit the author's motes, and bump chunk_state — atomically. */
   placeTrace(input: PlaceTraceInput): Promise<{ trace: Trace; motes: number }>;
@@ -127,6 +132,16 @@ export interface Repository {
     cost: number,
     warmthDelta: number,
   ): Promise<{ shrine: ShrineRow; motes: number }>;
+
+  /** Buffer raw movement-heat samples (footpath tiles) for later aggregation (P2-CLI-02/SRV-03). */
+  recordHeatSamples(tiles: ReadonlyArray<{ tx: number; ty: number }>): Promise<void>;
+
+  /**
+   * Footpath aggregation job (P2-SRV-03): fold all buffered heat samples into per-chunk footfall
+   * counters and raise chunk warmth by the footfall's warmth contribution. Idempotent w.r.t. already
+   * aggregated samples. Returns a summary for perf logging.
+   */
+  aggregateFootpaths(now: number): Promise<{ samplesProcessed: number; chunksTouched: number }>;
 
   /** Release any underlying resources (pg pool). No-op for in-memory. */
   close(): Promise<void>;

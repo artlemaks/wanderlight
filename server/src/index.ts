@@ -4,6 +4,7 @@ import { createAnalyticsClient } from './observability/analytics';
 import { createRepository } from './repo/factory';
 import { loadCorpus } from './content/corpus';
 import { buildApp } from './app';
+import { buildScheduler } from './jobs';
 
 // P1 server entrypoint: wires real dependencies (datastore, content corpus, guarded telemetry) into
 // the app factory and starts listening. The datastore is in-memory unless DATABASE_URL is set
@@ -19,8 +20,13 @@ async function main(): Promise<void> {
   const app = buildApp({ repo, corpus, analytics, reporter });
   const port = Number(process.env.PORT ?? 3000);
 
+  // Background jobs (footpath aggregation now; fade/GC in P2-SRV-07) run on interval timers.
+  const scheduler = buildScheduler(repo, app.log);
+  scheduler.start();
+
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
+    scheduler.stop();
     await app.close();
     await Promise.allSettled([reporter.flush(), analytics.shutdown(), repo.close()]);
     process.exit(0);

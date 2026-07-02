@@ -11,6 +11,10 @@
 import {
   chunkId,
   prioritizeTraces,
+  worldToChunk,
+  footpathTileKey,
+  footfallWarmth,
+  FOOTPATH_TILE_RESOLUTION,
   STARTING_MOTES,
   type Trace,
   type TracePayload,
@@ -116,15 +120,17 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
         chunks.map(async ({ cx, cy }) => {
           const [traceRes, stateRes] = await Promise.all([
             pool.query('SELECT * FROM trace WHERE chunk_x = $1 AND chunk_y = $2', [cx, cy]),
-            pool.query('SELECT warmth FROM chunk_state WHERE chunk_x = $1 AND chunk_y = $2', [
-              cx,
-              cy,
-            ]),
+            pool.query(
+              'SELECT warmth, footfall FROM chunk_state WHERE chunk_x = $1 AND chunk_y = $2',
+              [cx, cy],
+            ),
           ]);
+          const state = stateRes.rows[0];
           return {
             chunkId: chunkId(cx, cy),
-            warmth: stateRes.rows[0] ? Number(stateRes.rows[0].warmth) : 0,
+            warmth: state ? Number(state.warmth) : 0,
             traces: prioritizeTraces(traceRes.rows.map(toTrace), now),
+            footfall: (state?.footfall as Record<string, number>) ?? {},
           };
         }),
       );
@@ -298,6 +304,79 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
         );
         await client.query('COMMIT');
         return { applied: true, litCount: Number(row.lit_count) };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async recordHeatSamples(tiles) {
+      if (tiles.length === 0) return;
+      const values: string[] = [];
+      const params: number[] = [];
+      tiles.forEach(({ tx, ty }, i) => {
+        values.push(`($${i * 2 + 1}, $${i * 2 + 2})`);
+        params.push(tx, ty);
+      });
+      await pool.query(`INSERT INTO heat_sample (tx, ty) VALUES ${values.join(', ')}`, params);
+    },
+
+    async aggregateFootpaths() {
+      /** Cap scanned per run so the job stays within its perf budget; leftovers roll to next run. */
+      const BATCH_LIMIT = 5000;
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows } = await client.query(
+          'SELECT id, tx, ty FROM heat_sample WHERE aggregated = false ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED',
+          [BATCH_LIMIT],
+        );
+        if (rows.length === 0) {
+          await client.query('COMMIT');
+          return { samplesProcessed: 0, chunksTouched: 0 };
+        }
+        // Group deltas by chunk, then by footpath tile.
+        const perChunk = new Map<string, { cx: number; cy: number; tiles: Map<string, number> }>();
+        for (const r of rows) {
+          const tx = Number(r.tx);
+          const ty = Number(r.ty);
+          const { cx, cy } = worldToChunk(
+            tx * FOOTPATH_TILE_RESOLUTION,
+            ty * FOOTPATH_TILE_RESOLUTION,
+          );
+          const id = chunkId(cx, cy);
+          const entry = perChunk.get(id) ?? { cx, cy, tiles: new Map<string, number>() };
+          const key = footpathTileKey(tx, ty);
+          entry.tiles.set(key, (entry.tiles.get(key) ?? 0) + 1);
+          perChunk.set(id, entry);
+        }
+        for (const { cx, cy, tiles } of perChunk.values()) {
+          let visits = 0;
+          for (const n of tiles.values()) visits += n;
+          const cur = await client.query(
+            'SELECT footfall FROM chunk_state WHERE chunk_x = $1 AND chunk_y = $2',
+            [cx, cy],
+          );
+          const merged: Record<string, number> = {
+            ...((cur.rows[0]?.footfall as Record<string, number>) ?? {}),
+          };
+          for (const [key, n] of tiles) merged[key] = (merged[key] ?? 0) + n;
+          await client.query(
+            `INSERT INTO chunk_state (chunk_x, chunk_y, warmth, footfall, trace_count, updated_at)
+             VALUES ($1, $2, $3, $4::jsonb, 0, now())
+             ON CONFLICT (chunk_x, chunk_y)
+             DO UPDATE SET warmth = chunk_state.warmth + EXCLUDED.warmth,
+                           footfall = EXCLUDED.footfall,
+                           updated_at = now()`,
+            [cx, cy, footfallWarmth(visits), JSON.stringify(merged)],
+          );
+        }
+        const ids = rows.map((r) => Number(r.id));
+        await client.query('UPDATE heat_sample SET aggregated = true WHERE id = ANY($1)', [ids]);
+        await client.query('COMMIT');
+        return { samplesProcessed: rows.length, chunksTouched: perChunk.size };
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;

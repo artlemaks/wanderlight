@@ -9,7 +9,15 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { chunkId, prioritizeTraces, type Trace } from '@wanderlight/shared';
+import {
+  chunkId,
+  prioritizeTraces,
+  worldToChunk,
+  footpathTileKey,
+  footfallWarmth,
+  FOOTPATH_TILE_RESOLUTION,
+  type Trace,
+} from '@wanderlight/shared';
 import type {
   AppreciateResult,
   ClaimGiftResult,
@@ -31,6 +39,10 @@ export function createMemoryRepository(): Repository {
   const lanternLights = new Set<string>();
   /** Shrine structures keyed by chunk id. */
   const shrines = new Map<string, ShrineRow>();
+  /** Raw, not-yet-aggregated movement-heat samples (footpath tiles). */
+  let heatBuffer: Array<{ tx: number; ty: number }> = [];
+  /** Aggregated footfall: chunk id → (footpath-tile key → visit count). */
+  const footfall = new Map<string, Map<string, number>>();
 
   function put(player: Player): Player {
     players.set(player.id, player);
@@ -72,6 +84,7 @@ export function createMemoryRepository(): Repository {
           chunkId: id,
           warmth: chunkWarmth.get(id) ?? 0,
           traces: prioritizeTraces(inChunk, now),
+          footfall: Object.fromEntries(footfall.get(id) ?? new Map()),
         };
       });
     },
@@ -184,6 +197,32 @@ export function createMemoryRepository(): Repository {
       bumpWarmth(cx, cy, warmthDelta);
       const updated = put({ ...player, motes: player.motes - cost });
       return { shrine, motes: updated.motes };
+    },
+
+    async recordHeatSamples(tiles) {
+      heatBuffer.push(...tiles.map(({ tx, ty }) => ({ tx, ty })));
+    },
+
+    async aggregateFootpaths() {
+      const batch = heatBuffer;
+      heatBuffer = [];
+      const visitsPerChunk = new Map<string, number>();
+      for (const { tx, ty } of batch) {
+        const { cx, cy } = worldToChunk(
+          tx * FOOTPATH_TILE_RESOLUTION,
+          ty * FOOTPATH_TILE_RESOLUTION,
+        );
+        const id = chunkId(cx, cy);
+        const tiles = footfall.get(id) ?? new Map<string, number>();
+        const key = footpathTileKey(tx, ty);
+        tiles.set(key, (tiles.get(key) ?? 0) + 1);
+        footfall.set(id, tiles);
+        visitsPerChunk.set(id, (visitsPerChunk.get(id) ?? 0) + 1);
+      }
+      for (const [id, visits] of visitsPerChunk) {
+        chunkWarmth.set(id, (chunkWarmth.get(id) ?? 0) + footfallWarmth(visits));
+      }
+      return { samplesProcessed: batch.length, chunksTouched: visitsPerChunk.size };
     },
 
     async close() {
