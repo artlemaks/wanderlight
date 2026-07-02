@@ -17,3 +17,4 @@ export * from './season';
 export * from './store';
 export * from './ads';
 export * from './moderation';
+export * from './accessibility';
