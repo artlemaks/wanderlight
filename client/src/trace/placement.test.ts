@@ -9,9 +9,11 @@ import {
 } from './placement';
 
 describe('placement radial', () => {
-  it('exposes the P1 placeable types', () => {
+  it('exposes the placeable types (gift included, system-only shrine excluded)', () => {
     expect(PLACEABLE_TYPES).toContain('signpost');
     expect(PLACEABLE_TYPES).toContain('lantern');
+    expect(PLACEABLE_TYPES).toContain('gift');
+    expect(PLACEABLE_TYPES).not.toContain('shrine');
   });
 
   it('opens at a world position with no selection', () => {

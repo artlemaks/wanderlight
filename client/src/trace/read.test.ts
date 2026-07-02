@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { Trace } from '@wanderlight/shared';
-import { appreciateAvailability, renderSignpostText } from './read';
+import {
+  appreciateAvailability,
+  giftClaimAvailability,
+  lanternLightAvailability,
+  renderSignpostText,
+} from './read';
 import type { ComposerTemplate } from './composer';
 
 function makeTrace(over: Partial<Trace> = {}): Trace {
@@ -53,5 +58,44 @@ describe('renderSignpostText', () => {
       slots: ['adjective', 'place'],
     };
     expect(renderSignpostText(makeTrace(), template)).toBe('a gentle grove waits');
+  });
+});
+
+describe('giftClaimAvailability', () => {
+  const gift = () => makeTrace({ type: 'gift', authorId: 'author', payload: {} });
+
+  it('lets another traveler claim an unclaimed gift', () => {
+    expect(giftClaimAvailability(gift(), 'finder')).toEqual({ available: true, reason: '' });
+  });
+
+  it('forbids claiming your own gift', () => {
+    expect(giftClaimAvailability(gift(), 'author').available).toBe(false);
+  });
+
+  it('forbids claiming an already-claimed gift', () => {
+    const res = giftClaimAvailability(makeTrace({ type: 'gift', claimedBy: 'someone' }), 'finder');
+    expect(res.available).toBe(false);
+    expect(res.reason).toMatch(/claimed/);
+  });
+
+  it('is unavailable for non-gift traces', () => {
+    expect(giftClaimAvailability(makeTrace({ type: 'signpost' }), 'finder').available).toBe(false);
+  });
+});
+
+describe('lanternLightAvailability', () => {
+  it('offers lighting a lantern the viewer has not lit', () => {
+    expect(lanternLightAvailability(makeTrace({ type: 'lantern' }), false)).toEqual({
+      available: true,
+      reason: '',
+    });
+  });
+
+  it('disables after the viewer has lit it', () => {
+    expect(lanternLightAvailability(makeTrace({ type: 'lantern' }), true).available).toBe(false);
+  });
+
+  it('is unavailable for non-lantern traces', () => {
+    expect(lanternLightAvailability(makeTrace({ type: 'gift' }), false).available).toBe(false);
   });
 });

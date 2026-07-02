@@ -6,16 +6,19 @@
  * renders `RadialState` and dispatches these functions.
  */
 
-import { TRACE_TYPES, type TraceType } from '@wanderlight/shared';
+import { PLACEABLE_TRACE_TYPES, type PlaceableTraceType } from '@wanderlight/shared';
 
-/** The trace types a player can place in P1, in radial display order. */
-export const PLACEABLE_TYPES: readonly TraceType[] = TRACE_TYPES;
+/**
+ * The trace types a player can place from the radial, in display order. Shrines are excluded — they
+ * are system-authored and grown through offerings (P2-SRV-02), not placed here.
+ */
+export const PLACEABLE_TYPES: readonly PlaceableTraceType[] = PLACEABLE_TRACE_TYPES;
 
 export interface RadialState {
   readonly open: boolean;
   /** The world-tile position the trace will be placed at, captured when the radial opens. */
   readonly at: { readonly x: number; readonly y: number } | null;
-  readonly selected: TraceType | null;
+  readonly selected: PlaceableTraceType | null;
 }
 
 export const CLOSED_RADIAL: RadialState = { open: false, at: null, selected: null };
@@ -26,7 +29,7 @@ export function openRadial(x: number, y: number): RadialState {
 }
 
 /** Select a trace type (no-op if the radial is closed). */
-export function selectTraceType(state: RadialState, type: TraceType): RadialState {
+export function selectTraceType(state: RadialState, type: PlaceableTraceType): RadialState {
   if (!state.open) return state;
   return { ...state, selected: type };
 }
