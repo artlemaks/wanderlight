@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "task": "P2-CNT-01",
+  "status": "draft-pending-director-signoff",
+  "note": "Initial (partial) seed pass — system-authored traces across The First Vale so an early, community-less world still feels lived-in. Placed via `npm run seed:world` (server/src/scripts/seed-world.ts) using the P2-SRV-08 system-trace author. Signpost templateIds reference content/signpost-templates.json (also draft). Coordinates are world tiles; the First Vale is the 3x3 chunk block around the origin (chunk size 64). NOT approved to ship — awaiting director (Artur) sign-off on placement + tone.",
+  "traces": [
+    { "type": "lantern", "x": 20, "y": 20, "payload": {} },
+    {
+      "type": "signpost",
+      "x": 34,
+      "y": 30,
+      "payload": { "templateId": "encourage-01", "slots": {} }
+    },
+    { "type": "gift", "x": 48, "y": 40, "payload": {} },
+
+    { "type": "lantern", "x": 84, "y": 24, "payload": {} },
+    {
+      "type": "signpost",
+      "x": 100,
+      "y": 36,
+      "payload": { "templateId": "discover-01", "slots": {} }
+    },
+
+    { "type": "lantern", "x": 20, "y": 84, "payload": {} },
+    { "type": "gift", "x": 40, "y": 100, "payload": {} },
+
+    { "type": "lantern", "x": -20, "y": 20, "payload": {} },
+    {
+      "type": "signpost",
+      "x": -40,
+      "y": 34,
+      "payload": { "templateId": "encourage-02", "slots": {} }
+    },
+
+    { "type": "lantern", "x": 20, "y": -20, "payload": {} },
+    { "type": "gift", "x": -30, "y": -30, "payload": {} },
+
+    { "type": "lantern", "x": 96, "y": 96, "payload": {} },
+    {
+      "type": "signpost",
+      "x": -96,
+      "y": -96,
+      "payload": { "templateId": "mystery-01", "slots": {} }
+    }
+  ]
+}
