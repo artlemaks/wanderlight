@@ -15,6 +15,7 @@ const richPlayer: Player = {
   email: null,
   createdAt: 0,
   motes: 10_000,
+  giftCharges: 3,
   cosmeticsOwned: [],
   passTier: 'free',
 };
@@ -44,6 +45,9 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
           payload: input.payload,
           warmth: input.warmth,
           appreciations: 0,
+          litCount: 0,
+          claimedBy: null,
+          systemAuthored: input.systemAuthored ?? false,
           createdAt: input.createdAt,
           expiresAt: input.expiresAt,
         },
@@ -61,6 +65,21 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
     },
     async appreciate() {
       return { applied: true, appreciations: 1, authorId: 'p1' };
+    },
+    async claimGift() {
+      return { applied: true, motes: richPlayer.motes };
+    },
+    async lightLantern() {
+      return { applied: true, litCount: 1 };
+    },
+    async getShrine() {
+      return null;
+    },
+    async makeShrineOffering(cx, cy) {
+      return {
+        shrine: { chunkX: cx, chunkY: cy, offerings: 1, warmth: 1 },
+        motes: richPlayer.motes,
+      };
     },
     async close() {},
     ...over,

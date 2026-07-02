@@ -14,17 +14,26 @@ import {
   type PlaceTraceRequest,
   type PlaceTraceResponse,
   type AppreciateResponse,
+  type ClaimGiftResponse,
+  type LightLanternResponse,
 } from '@wanderlight/shared';
 import type { Repository } from '../repo/types';
 import type { Corpus } from '../content/corpus';
 import type { AnalyticsClient } from '../observability/analytics';
 import { resolveSession, DEVICE_TOKEN_HEADER } from '../session';
-import { appreciateTrace, placeTrace, type PlaceError } from '../trace/service';
+import {
+  appreciateTrace,
+  claimGift,
+  lightLantern,
+  placeTrace,
+  type PlaceError,
+} from '../trace/service';
 
 /** HTTP status for each service failure code. */
 const PLACE_STATUS: Record<PlaceError['code'], number> = {
   invalid: 400,
   insufficient_motes: 402,
+  insufficient_charges: 402,
   rate_limited: 429,
 };
 
@@ -69,6 +78,42 @@ export function registerTraceRoutes(
     const body: AppreciateResponse = {
       traceId: result.traceId,
       appreciations: result.appreciations,
+      applied: result.applied,
+    };
+    return body;
+  });
+
+  // Claim a gift (P2-SRV-01): first finder wins, author gets a silent thanks.
+  app.post<{ Params: { id: string } }>('/trace/:id/claim', async (req, reply) => {
+    const { player, deviceToken } = await resolveSession(repo, req);
+    reply.header(DEVICE_TOKEN_HEADER, deviceToken);
+
+    const result = await claimGift(repo, player.id, req.params.id);
+    if (!result.ok) {
+      const status = result.error.code === 'not_found' ? 404 : 400;
+      return reply.status(status).send({ error: result.error.code, message: result.error.message });
+    }
+    const body: ClaimGiftResponse = {
+      traceId: result.traceId,
+      applied: result.applied,
+      motes: result.motes,
+    };
+    return body;
+  });
+
+  // Light a lantern (P2-DATA-01): idempotent per player, raises chunk warmth.
+  app.post<{ Params: { id: string } }>('/trace/:id/light', async (req, reply) => {
+    const { player, deviceToken } = await resolveSession(repo, req);
+    reply.header(DEVICE_TOKEN_HEADER, deviceToken);
+
+    const result = await lightLantern(repo, player.id, req.params.id);
+    if (!result.ok) {
+      const status = result.error.code === 'not_found' ? 404 : 400;
+      return reply.status(status).send({ error: result.error.code, message: result.error.message });
+    }
+    const body: LightLanternResponse = {
+      traceId: result.traceId,
+      litCount: result.litCount,
       applied: result.applied,
     };
     return body;

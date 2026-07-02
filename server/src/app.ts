@@ -16,6 +16,7 @@ import type { Corpus } from './content/corpus';
 import { registerWorldRoutes } from './routes/world';
 import { registerTraceRoutes } from './routes/trace';
 import { registerSessionRoutes } from './routes/session';
+import { registerShrineRoutes } from './routes/shrine';
 
 export interface AppDeps {
   readonly repo: Repository;
@@ -59,6 +60,7 @@ export function buildApp(deps: AppDeps): FastifyInstance {
   registerSessionRoutes(app, deps.repo, deps.analytics);
   registerWorldRoutes(app, deps.repo);
   registerTraceRoutes(app, deps.repo, deps.corpus, deps.analytics);
+  registerShrineRoutes(app, deps.repo);
 
   return app;
 }

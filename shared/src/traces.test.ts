@@ -23,6 +23,9 @@ function makeTrace(over: Partial<Trace> = {}): Trace {
     payload: over.payload ?? { templateId: 'encourage-01', slots: {} },
     warmth: over.warmth ?? 0,
     appreciations: over.appreciations ?? 0,
+    litCount: over.litCount ?? 0,
+    claimedBy: over.claimedBy ?? null,
+    systemAuthored: over.systemAuthored ?? false,
     createdAt: over.createdAt ?? NOW,
     expiresAt: over.expiresAt ?? null,
   };
@@ -32,10 +35,12 @@ describe('isTraceType', () => {
   it('accepts the known trace types', () => {
     expect(isTraceType('signpost')).toBe(true);
     expect(isTraceType('lantern')).toBe(true);
+    expect(isTraceType('gift')).toBe(true);
+    expect(isTraceType('shrine')).toBe(true);
   });
 
   it('rejects unknown values and non-strings', () => {
-    expect(isTraceType('gift')).toBe(false);
+    expect(isTraceType('campfire')).toBe(false);
     expect(isTraceType(3)).toBe(false);
     expect(isTraceType(undefined)).toBe(false);
   });

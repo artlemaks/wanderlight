@@ -10,7 +10,15 @@
 
 import { randomUUID } from 'node:crypto';
 import { chunkId, prioritizeTraces, type Trace } from '@wanderlight/shared';
-import type { AppreciateResult, PlaceTraceInput, Player, Repository } from './types';
+import type {
+  AppreciateResult,
+  ClaimGiftResult,
+  LightLanternResult,
+  PlaceTraceInput,
+  Player,
+  Repository,
+  ShrineRow,
+} from './types';
 
 export function createMemoryRepository(): Repository {
   const players = new Map<string, Player>();
@@ -19,6 +27,10 @@ export function createMemoryRepository(): Repository {
   const chunkWarmth = new Map<string, number>();
   /** Set of `${traceId}:${fromId}` keys enforcing appreciation idempotency. */
   const appreciations = new Set<string>();
+  /** Set of `${traceId}:${fromId}` keys enforcing lantern-lighting idempotency. */
+  const lanternLights = new Set<string>();
+  /** Shrine structures keyed by chunk id. */
+  const shrines = new Map<string, ShrineRow>();
 
   function put(player: Player): Player {
     players.set(player.id, player);
@@ -26,17 +38,23 @@ export function createMemoryRepository(): Repository {
     return player;
   }
 
+  function bumpWarmth(cx: number, cy: number, delta: number): void {
+    const id = chunkId(cx, cy);
+    chunkWarmth.set(id, (chunkWarmth.get(id) ?? 0) + delta);
+  }
+
   return {
     async getOrCreatePlayerByToken(deviceToken) {
       const existingId = playersByToken.get(deviceToken);
       if (existingId) return players.get(existingId)!;
-      const { STARTING_MOTES } = await import('@wanderlight/shared');
+      const { STARTING_MOTES, STARTING_GIFT_CHARGES } = await import('@wanderlight/shared');
       return put({
         id: randomUUID(),
         deviceToken,
         email: null,
         createdAt: Date.now(),
         motes: STARTING_MOTES,
+        giftCharges: STARTING_GIFT_CHARGES,
         cosmeticsOwned: [],
         passTier: 'free',
       });
@@ -72,13 +90,19 @@ export function createMemoryRepository(): Repository {
         payload: input.payload,
         warmth: input.warmth,
         appreciations: 0,
+        litCount: 0,
+        claimedBy: null,
+        systemAuthored: input.systemAuthored ?? false,
         createdAt: input.createdAt,
         expiresAt: input.expiresAt,
       };
       traces.set(trace.id, trace);
-      const id = chunkId(input.chunkX, input.chunkY);
-      chunkWarmth.set(id, (chunkWarmth.get(id) ?? 0) + input.warmth);
-      const updated = put({ ...author, motes: author.motes - input.cost });
+      bumpWarmth(input.chunkX, input.chunkY, input.warmth);
+      const updated = put({
+        ...author,
+        motes: author.motes - input.cost,
+        giftCharges: author.giftCharges - (input.giftChargeCost ?? 0),
+      });
       return { trace, motes: updated.motes };
     },
 
@@ -110,6 +134,56 @@ export function createMemoryRepository(): Repository {
       const author = players.get(trace.authorId);
       if (author) put({ ...author, motes: author.motes + rewardMotes });
       return { applied: true, appreciations: updated.appreciations, authorId: trace.authorId };
+    },
+
+    async claimGift(traceId, claimantId, claimReward, authorReward): Promise<ClaimGiftResult> {
+      const trace = traces.get(traceId);
+      if (!trace) throw new Error(`Unknown trace ${traceId}`);
+      const claimant = players.get(claimantId);
+      if (!claimant) throw new Error(`Unknown claimant ${claimantId}`);
+      if (trace.claimedBy !== null) {
+        return { applied: false, motes: claimant.motes };
+      }
+      traces.set(traceId, { ...trace, claimedBy: claimantId });
+      const updatedClaimant = put({ ...claimant, motes: claimant.motes + claimReward });
+      const author = players.get(trace.authorId);
+      if (author) put({ ...author, motes: author.motes + authorReward });
+      return { applied: true, motes: updatedClaimant.motes };
+    },
+
+    async lightLantern(traceId, fromId, warmthDelta): Promise<LightLanternResult> {
+      const trace = traces.get(traceId);
+      if (!trace) throw new Error(`Unknown trace ${traceId}`);
+      const key = `${traceId}:${fromId}`;
+      if (lanternLights.has(key)) {
+        return { applied: false, litCount: trace.litCount };
+      }
+      lanternLights.add(key);
+      const updated: Trace = { ...trace, litCount: trace.litCount + 1 };
+      traces.set(traceId, updated);
+      bumpWarmth(trace.chunkX, trace.chunkY, warmthDelta);
+      return { applied: true, litCount: updated.litCount };
+    },
+
+    async getShrine(cx, cy) {
+      return shrines.get(chunkId(cx, cy)) ?? null;
+    },
+
+    async makeShrineOffering(cx, cy, playerId, cost, warmthDelta) {
+      const player = players.get(playerId);
+      if (!player) throw new Error(`Unknown player ${playerId}`);
+      const id = chunkId(cx, cy);
+      const current = shrines.get(id) ?? { chunkX: cx, chunkY: cy, offerings: 0, warmth: 0 };
+      const shrine: ShrineRow = {
+        chunkX: cx,
+        chunkY: cy,
+        offerings: current.offerings + 1,
+        warmth: current.warmth + warmthDelta,
+      };
+      shrines.set(id, shrine);
+      bumpWarmth(cx, cy, warmthDelta);
+      const updated = put({ ...player, motes: player.motes - cost });
+      return { shrine, motes: updated.motes };
     },
 
     async close() {

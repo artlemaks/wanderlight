@@ -10,25 +10,50 @@
  * application shape. The server repo layer maps between the two.
  */
 
-/** Trace kinds implemented in the P1 vertical slice. Gift/shrine arrive in P2 (additive). */
-export const TRACE_TYPES = ['signpost', 'lantern'] as const;
+/**
+ * Trace kinds. P1 shipped `signpost`/`lantern`; P2 adds `gift` (a wrapped light a finder may claim
+ * once) and `shrine` (a shared, growing structure at a landmark). All are additive.
+ */
+export const TRACE_TYPES = ['signpost', 'lantern', 'gift', 'shrine'] as const;
 export type TraceType = (typeof TRACE_TYPES)[number];
+
+/**
+ * Trace kinds a *player* may place directly via `POST /trace`. Shrines are not placed here — they
+ * are system-authored and grown through offerings (P2-SRV-02) — so they are excluded.
+ */
+export const PLACEABLE_TRACE_TYPES = ['signpost', 'lantern', 'gift'] as const;
+export type PlaceableTraceType = (typeof PLACEABLE_TRACE_TYPES)[number];
 
 /** Is `v` one of the known trace types? Narrows `unknown` at request boundaries. */
 export function isTraceType(v: unknown): v is TraceType {
   return typeof v === 'string' && (TRACE_TYPES as readonly string[]).includes(v);
 }
 
-/** Warmth each trace type contributes to its chunk on placement. Lanterns are light, so warmer. */
+/** Is `v` a player-placeable trace type (excludes system-only `shrine`)? */
+export function isPlaceableTraceType(v: unknown): v is PlaceableTraceType {
+  return typeof v === 'string' && (PLACEABLE_TRACE_TYPES as readonly string[]).includes(v);
+}
+
+/**
+ * Warmth each trace type contributes to its chunk on placement. Lanterns are light; shrines are
+ * landmark hearths, so warmest.
+ */
 export const TRACE_WARMTH: Readonly<Record<TraceType, number>> = {
   signpost: 1,
   lantern: 2,
+  gift: 1,
+  shrine: 3,
 };
 
-/** How long each trace type lives before it is eligible for fade/GC (P2). Epoch-ms deltas. */
-export const TRACE_TTL_MS: Readonly<Record<TraceType, number>> = {
+/**
+ * How long each trace type lives before it is eligible for fade/GC (P2-SRV-07). Epoch-ms deltas;
+ * `null` means the trace never expires. Shrines are permanent shared structures, so they never GC.
+ */
+export const TRACE_TTL_MS: Readonly<Record<TraceType, number | null>> = {
   signpost: 30 * 24 * 60 * 60 * 1000,
   lantern: 30 * 24 * 60 * 60 * 1000,
+  gift: 30 * 24 * 60 * 60 * 1000,
+  shrine: null,
 };
 
 /**
@@ -46,7 +71,20 @@ export interface LanternPayload {
   readonly note?: never;
 }
 
-export type TracePayload = SignpostPayload | LanternPayload;
+/**
+ * A gift: a wrapped light one traveler leaves for whoever finds it next. Carries no authored text
+ * (abuse-resistance, scope §9); the "gift" is the mote reward a finder claims exactly once.
+ */
+export interface GiftPayload {
+  readonly note?: never;
+}
+
+/** A shrine: a shared, growing structure at a landmark. Offerings accumulate against it (P2-SRV-02). */
+export interface ShrinePayload {
+  readonly note?: never;
+}
+
+export type TracePayload = SignpostPayload | LanternPayload | GiftPayload | ShrinePayload;
 
 /**
  * The application shape of a persisted trace. `x`/`y` are world-tile coordinates; `chunkX`/`chunkY`
@@ -65,6 +103,21 @@ export interface Trace {
   readonly warmth: number;
   /** Count of appreciations received; a prioritization signal and an author-reward driver. */
   readonly appreciations: number;
+  /**
+   * Times a lantern has been (re)lit by other travelers (P2-DATA-01). Only meaningful for lanterns;
+   * `0` for other kinds. Each light raises chunk warmth, idempotent per player.
+   */
+  readonly litCount: number;
+  /**
+   * For gifts (P2-SRV-01): the player who claimed this gift, or `null` if unclaimed. A gift may be
+   * claimed exactly once. `null` for non-gift kinds.
+   */
+  readonly claimedBy: string | null;
+  /**
+   * `true` for system-authored seed traces (P2-SRV-08) — flagged for slow/never GC and to keep them
+   * visually indistinguishable to players while being distinguishable to the GC job.
+   */
+  readonly systemAuthored: boolean;
   /** Epoch milliseconds. */
   readonly createdAt: number;
   /** Epoch milliseconds; traces past this are eligible for fade/GC (P2). `null` = no expiry. */
@@ -154,4 +207,43 @@ export interface AppreciateResponse {
   readonly traceId: string;
   readonly appreciations: number;
   readonly applied: boolean;
+}
+
+/**
+ * `POST /trace/:id/claim` response (P2-SRV-01). `applied` is false when the gift was already claimed.
+ * `motes` is the claimant's balance after receiving the gift reward.
+ */
+export interface ClaimGiftResponse {
+  readonly traceId: string;
+  readonly applied: boolean;
+  readonly motes: number;
+}
+
+/**
+ * `POST /trace/:id/light` response (P2-DATA-01). `applied` is false when this player already lit it.
+ * `litCount` is the lantern's total lights after the attempt.
+ */
+export interface LightLanternResponse {
+  readonly traceId: string;
+  readonly litCount: number;
+  readonly applied: boolean;
+}
+
+/** A shrine's readable, accumulating state (P2-SRV-02). */
+export interface ShrineState {
+  readonly chunkId: string;
+  readonly offerings: number;
+  readonly warmth: number;
+}
+
+/** `POST /shrine/offering` body — server derives the chunk + landmark from (x, y). */
+export interface ShrineOfferingRequest {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** `POST /shrine/offering` response: the shrine's new state + the offerer's remaining motes. */
+export interface ShrineOfferingResponse {
+  readonly shrine: ShrineState;
+  readonly motes: number;
 }

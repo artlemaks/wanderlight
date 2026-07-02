@@ -16,6 +16,8 @@ export interface Player {
   readonly email: string | null;
   readonly createdAt: number;
   readonly motes: number;
+  /** Consumable charges spent to place gifts (P2-SRV-01). */
+  readonly giftCharges: number;
   readonly cosmeticsOwned: readonly string[];
   readonly passTier: string;
 }
@@ -34,6 +36,10 @@ export interface PlaceTraceInput {
   readonly expiresAt: number | null;
   /** Motes to debit from the author atomically with the insert (already validated by the service). */
   readonly cost: number;
+  /** Gift charges to debit from the author atomically with the insert (gifts only; default 0). */
+  readonly giftChargeCost?: number;
+  /** Flags the trace as system-authored seed content (P2-SRV-08). Defaults to false. */
+  readonly systemAuthored?: boolean;
 }
 
 /** Result of an appreciation attempt. `applied: false` means it was a duplicate no-op. */
@@ -41,6 +47,27 @@ export interface AppreciateResult {
   readonly applied: boolean;
   readonly appreciations: number;
   readonly authorId: string;
+}
+
+/** Result of a gift-claim attempt (P2-SRV-01). `applied: false` means it was already claimed. */
+export interface ClaimGiftResult {
+  readonly applied: boolean;
+  /** The claimant's mote balance after the (idempotent) reward. */
+  readonly motes: number;
+}
+
+/** Result of a lantern-lighting attempt (P2-DATA-01). `applied: false` = this player already lit it. */
+export interface LightLanternResult {
+  readonly applied: boolean;
+  readonly litCount: number;
+}
+
+/** A shrine's accumulating state (P2-SRV-02). */
+export interface ShrineRow {
+  readonly chunkX: number;
+  readonly chunkY: number;
+  readonly offerings: number;
+  readonly warmth: number;
 }
 
 export interface Repository {
@@ -66,6 +93,40 @@ export interface Repository {
 
   /** Idempotent per (trace, player); on first apply, rewards the author `rewardMotes`. */
   appreciate(traceId: string, fromId: string, rewardMotes: number): Promise<AppreciateResult>;
+
+  /**
+   * Claim a gift (P2-SRV-01): atomically mark it claimed by `claimantId` (once, first-claimer-wins),
+   * credit the claimant `claimReward` motes, and credit the author `authorReward` motes. Idempotent —
+   * a second claim (by anyone) is a no-op returning `applied: false`.
+   */
+  claimGift(
+    traceId: string,
+    claimantId: string,
+    claimReward: number,
+    authorReward: number,
+  ): Promise<ClaimGiftResult>;
+
+  /**
+   * Light a lantern (P2-DATA-01): idempotent per (lantern, player). On first light, increments the
+   * lantern's `lit_count` and raises its chunk warmth by `warmthDelta`.
+   */
+  lightLantern(traceId: string, fromId: string, warmthDelta: number): Promise<LightLanternResult>;
+
+  /** Read a shrine's accumulating state, or `null` if no offering has been made in that chunk yet. */
+  getShrine(cx: number, cy: number): Promise<ShrineRow | null>;
+
+  /**
+   * Make an offering to a chunk's shrine (P2-SRV-02): atomically debit `cost` motes from the player,
+   * increment the shrine's offerings, and raise its warmth by `warmthDelta`. Creates the shrine row
+   * on first offering. Returns the new shrine state + the player's remaining motes.
+   */
+  makeShrineOffering(
+    cx: number,
+    cy: number,
+    playerId: string,
+    cost: number,
+    warmthDelta: number,
+  ): Promise<{ shrine: ShrineRow; motes: number }>;
 
   /** Release any underlying resources (pg pool). No-op for in-memory. */
   close(): Promise<void>;
