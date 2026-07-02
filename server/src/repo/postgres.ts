@@ -441,6 +441,48 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
       }
     },
 
+    async gcTraces(now) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        // Eligibility mirrors isGcEligible: expired, unappreciated, unlit, non-system.
+        const del = await client.query(
+          `DELETE FROM trace
+           WHERE system_authored = false
+             AND expires_at IS NOT NULL
+             AND expires_at <= to_timestamp($1/1000.0)
+             AND appreciations = 0
+             AND lit_count = 0
+           RETURNING chunk_x, chunk_y, warmth`,
+          [now],
+        );
+        // Fade removed warmth back out of each affected chunk (floored at 0).
+        const perChunk = new Map<string, { cx: number; cy: number; warmth: number }>();
+        for (const r of del.rows) {
+          const cx = Number(r.chunk_x);
+          const cy = Number(r.chunk_y);
+          const key = chunkId(cx, cy);
+          const entry = perChunk.get(key) ?? { cx, cy, warmth: 0 };
+          entry.warmth += Number(r.warmth);
+          perChunk.set(key, entry);
+        }
+        for (const { cx, cy, warmth } of perChunk.values()) {
+          await client.query(
+            `UPDATE chunk_state SET warmth = GREATEST(0, warmth - $3), updated_at = now()
+             WHERE chunk_x = $1 AND chunk_y = $2`,
+            [cx, cy, warmth],
+          );
+        }
+        await client.query('COMMIT');
+        return { scanned: del.rowCount, removed: del.rowCount };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
     async getShrine(cx, cy) {
       const { rows } = await pool.query(
         'SELECT * FROM shrine WHERE chunk_x = $1 AND chunk_y = $2',

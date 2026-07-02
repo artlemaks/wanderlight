@@ -175,6 +175,23 @@ export function prioritizeTraces(
     .slice(0, Math.max(0, cap));
 }
 
+// --- Fade + garbage collection (P2-SRV-07) -----------------------------------------------------
+
+/**
+ * Is `trace` eligible for garbage collection at `now`? A trace is collected only when it is **old,
+ * unappreciated, and expired** — and never when it carries lasting community value. Concretely, all
+ * of: it has a finite `expiresAt` that is now in the past, no appreciations, no lantern lightings,
+ * and is not system-authored (seed traces are kept). This is the single safety predicate the GC job
+ * relies on, so it lives here (shared, pure, unit-tested) rather than in a SQL WHERE clause.
+ */
+export function isGcEligible(trace: Trace, now: number): boolean {
+  if (trace.systemAuthored) return false;
+  if (trace.expiresAt == null || trace.expiresAt > now) return false;
+  if (trace.appreciations > 0) return false;
+  if (trace.litCount > 0) return false;
+  return true;
+}
+
 // --- API contracts (P1-SRV-04/05/07) ----------------------------------------------------------
 
 /** `POST /trace` body. Server derives chunk coords + `expires_at`; never trusts client chunk ids. */

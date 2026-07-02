@@ -176,6 +176,14 @@ export interface Repository {
    */
   aggregateFootpaths(now: number): Promise<{ samplesProcessed: number; chunksTouched: number }>;
 
+  /**
+   * Fade + garbage-collect eligible traces (P2-SRV-07). Deletes every trace for which
+   * {@link isGcEligible} holds at `now` — old, unappreciated, expired, non-system — and fades each
+   * removed trace's warmth back out of its chunk. Never touches fresh/appreciated/lit/system traces.
+   * Returns a summary for perf logging.
+   */
+  gcTraces(now: number): Promise<{ scanned: number; removed: number }>;
+
   /** Release any underlying resources (pg pool). No-op for in-memory. */
   close(): Promise<void>;
 }

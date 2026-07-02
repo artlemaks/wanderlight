@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import {
   chunkId,
   prioritizeTraces,
+  isGcEligible,
   worldToChunk,
   footpathTileKey,
   footfallWarmth,
@@ -235,6 +236,21 @@ export function createMemoryRepository(): Repository {
 
     async recordHeatSamples(tiles) {
       heatBuffer.push(...tiles.map(({ tx, ty }) => ({ tx, ty })));
+    },
+
+    async gcTraces(now) {
+      let scanned = 0;
+      let removed = 0;
+      for (const trace of [...traces.values()]) {
+        scanned += 1;
+        if (!isGcEligible(trace, now)) continue;
+        traces.delete(trace.id);
+        // Fade the removed trace's warmth back out of its chunk (floored at 0).
+        const id = chunkId(trace.chunkX, trace.chunkY);
+        chunkWarmth.set(id, Math.max(0, (chunkWarmth.get(id) ?? 0) - trace.warmth));
+        removed += 1;
+      }
+      return { scanned, removed };
     },
 
     async aggregateFootpaths() {

@@ -92,6 +92,9 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
     async aggregateFootpaths() {
       return { samplesProcessed: 0, chunksTouched: 0 };
     },
+    async gcTraces() {
+      return { scanned: 0, removed: 0 };
+    },
     async close() {},
     ...over,
   };

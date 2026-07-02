@@ -3,6 +3,7 @@ import {
   isTraceType,
   tracePriority,
   prioritizeTraces,
+  isGcEligible,
   MAX_TRACES_PER_CHUNK,
   PRIORITY_WEIGHTS,
   type Trace,
@@ -109,5 +110,33 @@ describe('prioritizeTraces', () => {
   it('returns an empty list for a zero or negative cap', () => {
     expect(prioritizeTraces([makeTrace()], NOW, 0)).toEqual([]);
     expect(prioritizeTraces([makeTrace()], NOW, -3)).toEqual([]);
+  });
+});
+
+describe('isGcEligible', () => {
+  const expired = { createdAt: NOW - 1000, expiresAt: NOW - 1 };
+
+  it('collects an old, unappreciated, expired trace', () => {
+    expect(isGcEligible(makeTrace({ ...expired }), NOW)).toBe(true);
+  });
+
+  it('never collects a fresh (unexpired) trace', () => {
+    expect(isGcEligible(makeTrace({ createdAt: NOW, expiresAt: NOW + 1000 }), NOW)).toBe(false);
+  });
+
+  it('never collects an appreciated trace, even if expired', () => {
+    expect(isGcEligible(makeTrace({ ...expired, appreciations: 1 }), NOW)).toBe(false);
+  });
+
+  it('never collects a lit lantern, even if expired', () => {
+    expect(isGcEligible(makeTrace({ ...expired, type: 'lantern', litCount: 1 }), NOW)).toBe(false);
+  });
+
+  it('never collects a system-authored trace', () => {
+    expect(isGcEligible(makeTrace({ ...expired, systemAuthored: true }), NOW)).toBe(false);
+  });
+
+  it('never collects a trace with no expiry', () => {
+    expect(isGcEligible(makeTrace({ createdAt: NOW - 1000, expiresAt: null }), NOW)).toBe(false);
   });
 });
