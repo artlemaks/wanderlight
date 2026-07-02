@@ -8,3 +8,5 @@ export * from './analytics';
 export * from './traces';
 export * from './economy';
 export * from './warmth';
+export * from './journal';
+export * from './motes';

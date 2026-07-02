@@ -28,7 +28,7 @@ export function registerShrineRoutes(app: FastifyInstance, repo: Repository): vo
     const { player, deviceToken } = await resolveSession(repo, req);
     reply.header(DEVICE_TOKEN_HEADER, deviceToken);
 
-    const result = await makeOffering(repo, player.id, req.body?.x, req.body?.y);
+    const result = await makeOffering(repo, player.id, req.body?.x, req.body?.y, Date.now());
     if (!result.ok) {
       return reply
         .status(OFFERING_STATUS[result.error.code])

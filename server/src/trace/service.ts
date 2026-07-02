@@ -17,6 +17,7 @@ import {
   GIFT_CLAIM_REWARD_MOTES,
   GIFT_AUTHOR_REWARD_MOTES,
   LANTERN_LIGHT_WARMTH,
+  FIRST_LIGHT_BONUS_MOTES,
   type PlaceTraceRequest,
   type SignpostPayload,
   type Trace,
@@ -114,6 +115,7 @@ export async function placeTrace(
     cost,
     giftChargeCost,
   });
+  await repo.recordJournalEvent(playerId, 'place_trace', trace.id, now);
   return { ok: true, trace, motes };
 }
 
@@ -125,6 +127,7 @@ export async function appreciateTrace(
   repo: Repository,
   playerId: string,
   traceId: string,
+  now: number,
 ): Promise<AppreciateResultOut> {
   const trace = await repo.getTraceById(traceId);
   if (!trace) return { ok: false, error: { code: 'not_found', message: 'Trace not found' } };
@@ -135,6 +138,11 @@ export async function appreciateTrace(
     };
   }
   const result = await repo.appreciate(traceId, playerId, APPRECIATION_REWARD_MOTES);
+  if (result.applied) {
+    // Journal both sides of the exchange: the giver's act and the author's received thanks.
+    await repo.recordJournalEvent(playerId, 'appreciate', traceId, now);
+    await repo.recordJournalEvent(result.authorId, 'receive_appreciation', traceId, now);
+  }
   return { ok: true, traceId, appreciations: result.appreciations, applied: result.applied };
 }
 
@@ -150,6 +158,7 @@ export async function claimGift(
   repo: Repository,
   playerId: string,
   traceId: string,
+  now: number,
 ): Promise<ClaimGiftResultOut> {
   const trace = await repo.getTraceById(traceId);
   if (!trace) return { ok: false, error: { code: 'not_found', message: 'Trace not found' } };
@@ -165,6 +174,7 @@ export async function claimGift(
     GIFT_CLAIM_REWARD_MOTES,
     GIFT_AUTHOR_REWARD_MOTES,
   );
+  if (result.applied) await repo.recordJournalEvent(playerId, 'gift_claim', traceId, now);
   return { ok: true, traceId, applied: result.applied, motes: result.motes };
 }
 
@@ -180,12 +190,22 @@ export async function lightLantern(
   repo: Repository,
   playerId: string,
   traceId: string,
+  now: number,
 ): Promise<LightLanternResultOut> {
   const trace = await repo.getTraceById(traceId);
   if (!trace) return { ok: false, error: { code: 'not_found', message: 'Trace not found' } };
   if (trace.type !== 'lantern') {
     return { ok: false, error: { code: 'invalid', message: 'That trace is not a lantern' } };
   }
-  const result = await repo.lightLantern(traceId, playerId, LANTERN_LIGHT_WARMTH);
+  const result = await repo.lightLantern(
+    traceId,
+    playerId,
+    LANTERN_LIGHT_WARMTH,
+    FIRST_LIGHT_BONUS_MOTES,
+  );
+  // The first-ever light of a lantern is a journal-worthy earn moment.
+  if (result.applied && result.litCount === 1) {
+    await repo.recordJournalEvent(playerId, 'first_light', traceId, now);
+  }
   return { ok: true, traceId, applied: result.applied, litCount: result.litCount };
 }

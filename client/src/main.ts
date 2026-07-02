@@ -1,5 +1,5 @@
 import { Application, Container, Graphics } from 'pixi.js';
-import { SEED_VERSION, TILE_SIZE, type Camera } from '@wanderlight/shared';
+import { SEED_VERSION, TILE_SIZE, WORLD_SEED, type Camera } from '@wanderlight/shared';
 import { ChunkGridRenderer } from './world/chunkGridRenderer';
 import { TRAVELER_COLOR, TRAVELER_RADIUS_TILES } from './world/palette';
 import { updateCamera } from './world/followCamera';
@@ -19,9 +19,6 @@ import { capture, initAnalytics } from './analytics/posthog';
  * clamp bounds here. All movement/camera state lives in pure modules; this file is just the wiring
  * and the per-frame ticker.
  */
-
-/** Fixed world seed for the prototype. A real seed-selection flow arrives with persistence (P1+). */
-const WORLD_SEED = 12345;
 
 async function boot(): Promise<void> {
   const app = new Application();

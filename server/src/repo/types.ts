@@ -7,7 +7,13 @@
  * mirroring the guarded-optional-integration pattern applied to the datastore.
  */
 
-import type { Trace, TracePayload, TraceType } from '@wanderlight/shared';
+import type {
+  Trace,
+  TracePayload,
+  TraceType,
+  JournalEvent,
+  JournalEventKind,
+} from '@wanderlight/shared';
 
 /** A player account. `deviceToken` is server-only and never leaves the API. */
 export interface Player {
@@ -113,9 +119,15 @@ export interface Repository {
 
   /**
    * Light a lantern (P2-DATA-01): idempotent per (lantern, player). On first light, increments the
-   * lantern's `lit_count` and raises its chunk warmth by `warmthDelta`.
+   * lantern's `lit_count` and raises its chunk warmth by `warmthDelta`. When the lighting is the very
+   * first for that lantern (lit_count 0→1), also credits the lighter `firstLightBonus` motes (earn).
    */
-  lightLantern(traceId: string, fromId: string, warmthDelta: number): Promise<LightLanternResult>;
+  lightLantern(
+    traceId: string,
+    fromId: string,
+    warmthDelta: number,
+    firstLightBonus: number,
+  ): Promise<LightLanternResult>;
 
   /** Read a shrine's accumulating state, or `null` if no offering has been made in that chunk yet. */
   getShrine(cx: number, cy: number): Promise<ShrineRow | null>;
@@ -132,6 +144,27 @@ export interface Repository {
     cost: number,
     warmthDelta: number,
   ): Promise<{ shrine: ShrineRow; motes: number }>;
+
+  /**
+   * Collect a mote of light (P2-CLI-05): idempotent per (player, mote). On first collect, credits the
+   * player `rewardMotes`. A repeat collect of the same mote is a no-op.
+   */
+  collectMote(
+    playerId: string,
+    moteId: string,
+    rewardMotes: number,
+  ): Promise<{ applied: boolean; motes: number }>;
+
+  /** Append a journal event to a player's personal history feed (P2-DATA-02). */
+  recordJournalEvent(
+    playerId: string,
+    kind: JournalEventKind,
+    refId: string | null,
+    now: number,
+  ): Promise<void>;
+
+  /** A player's most-recent journal events, newest first (P2-CLI-06). */
+  getJournal(playerId: string, limit: number): Promise<JournalEvent[]>;
 
   /** Buffer raw movement-heat samples (footpath tiles) for later aggregation (P2-CLI-02/SRV-03). */
   recordHeatSamples(tiles: ReadonlyArray<{ tx: number; ty: number }>): Promise<void>;

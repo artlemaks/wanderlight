@@ -19,6 +19,7 @@ import {
   type Trace,
   type TracePayload,
   type TraceType,
+  type JournalEvent,
 } from '@wanderlight/shared';
 import type {
   AppreciateResult,
@@ -277,7 +278,7 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
       }
     },
 
-    async lightLantern(traceId, fromId, warmthDelta): Promise<LightLanternResult> {
+    async lightLantern(traceId, fromId, warmthDelta, firstLightBonus): Promise<LightLanternResult> {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
@@ -295,6 +296,7 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
           [traceId],
         );
         const row = upd.rows[0]!;
+        const litCount = Number(row.lit_count);
         await client.query(
           `INSERT INTO chunk_state (chunk_x, chunk_y, warmth, trace_count, updated_at)
            VALUES ($1, $2, $3, 0, now())
@@ -302,14 +304,68 @@ export async function createPostgresRepository(databaseUrl: string): Promise<Rep
            DO UPDATE SET warmth = chunk_state.warmth + EXCLUDED.warmth, updated_at = now()`,
           [Number(row.chunk_x), Number(row.chunk_y), warmthDelta],
         );
+        if (litCount === 1 && firstLightBonus > 0) {
+          await client.query('UPDATE player SET motes = motes + $1 WHERE id = $2', [
+            firstLightBonus,
+            fromId,
+          ]);
+        }
         await client.query('COMMIT');
-        return { applied: true, litCount: Number(row.lit_count) };
+        return { applied: true, litCount };
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
       } finally {
         client.release();
       }
+    },
+
+    async collectMote(playerId, moteId, rewardMotes) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const ins = await client.query(
+          'INSERT INTO mote_collect (player_id, mote_id) VALUES ($1, $2) ON CONFLICT (player_id, mote_id) DO NOTHING',
+          [playerId, moteId],
+        );
+        if (ins.rowCount === 0) {
+          const cur = await client.query('SELECT motes FROM player WHERE id = $1', [playerId]);
+          await client.query('COMMIT');
+          return { applied: false, motes: Number(cur.rows[0]!.motes) };
+        }
+        const upd = await client.query(
+          'UPDATE player SET motes = motes + $1 WHERE id = $2 RETURNING motes',
+          [rewardMotes, playerId],
+        );
+        await client.query('COMMIT');
+        return { applied: true, motes: Number(upd.rows[0]!.motes) };
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    },
+
+    async recordJournalEvent(playerId, kind, refId, now) {
+      await pool.query(
+        'INSERT INTO journal_event (player_id, kind, ref_id, created_at) VALUES ($1, $2, $3, to_timestamp($4/1000.0))',
+        [playerId, kind, refId, now],
+      );
+    },
+
+    async getJournal(playerId, limit) {
+      const { rows } = await pool.query(
+        'SELECT * FROM journal_event WHERE player_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2',
+        [playerId, limit],
+      );
+      return rows.map((r) => ({
+        id: String(r.id),
+        playerId: String(r.player_id),
+        kind: String(r.kind) as JournalEvent['kind'],
+        refId: r.ref_id == null ? null : String(r.ref_id),
+        createdAt: new Date(r.created_at as string).getTime(),
+      }));
     },
 
     async recordHeatSamples(tiles) {

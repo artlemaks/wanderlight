@@ -67,7 +67,7 @@ export function registerTraceRoutes(
     const { player, deviceToken } = await resolveSession(repo, req);
     reply.header(DEVICE_TOKEN_HEADER, deviceToken);
 
-    const result = await appreciateTrace(repo, player.id, req.params.id);
+    const result = await appreciateTrace(repo, player.id, req.params.id, Date.now());
     if (!result.ok) {
       const status = result.error.code === 'not_found' ? 404 : 400;
       return reply.status(status).send({ error: result.error.code, message: result.error.message });
@@ -88,7 +88,7 @@ export function registerTraceRoutes(
     const { player, deviceToken } = await resolveSession(repo, req);
     reply.header(DEVICE_TOKEN_HEADER, deviceToken);
 
-    const result = await claimGift(repo, player.id, req.params.id);
+    const result = await claimGift(repo, player.id, req.params.id, Date.now());
     if (!result.ok) {
       const status = result.error.code === 'not_found' ? 404 : 400;
       return reply.status(status).send({ error: result.error.code, message: result.error.message });
@@ -106,7 +106,7 @@ export function registerTraceRoutes(
     const { player, deviceToken } = await resolveSession(repo, req);
     reply.header(DEVICE_TOKEN_HEADER, deviceToken);
 
-    const result = await lightLantern(repo, player.id, req.params.id);
+    const result = await lightLantern(repo, player.id, req.params.id, Date.now());
     if (!result.ok) {
       const status = result.error.code === 'not_found' ? 404 : 400;
       return reply.status(status).send({ error: result.error.code, message: result.error.message });

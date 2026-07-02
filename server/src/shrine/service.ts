@@ -30,6 +30,7 @@ export async function makeOffering(
   playerId: string,
   x: number,
   y: number,
+  now: number,
 ): Promise<OfferingResult> {
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     return { ok: false, error: { code: 'invalid', message: 'x and y must be finite numbers' } };
@@ -53,5 +54,6 @@ export async function makeOffering(
     SHRINE_OFFERING_COST,
     SHRINE_OFFERING_WARMTH,
   );
+  await repo.recordJournalEvent(playerId, 'offering', chunkId(cx, cy), now);
   return { ok: true, shrine: toShrineState(shrine), motes };
 }

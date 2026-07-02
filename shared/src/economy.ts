@@ -57,3 +57,22 @@ export const RATE_LIMITS = {
 export function placementCost(type: TraceType): number {
   return TRACE_PLACEMENT_COST[type];
 }
+
+/**
+ * Motes economy rules (P2-SRV-05) — the full earn/spend ruleset, server-authoritative.
+ *
+ * **Monetization guardrails (scope §9 — binding, see indication `monetization-guardrails-in-ac`):**
+ * motes are *earned only*, never purchasable; they are a separate currency from embers (the paid
+ * premium currency, not yet implemented); nothing here grants power or degrades another player's
+ * world; and every free-tier cosmetic is reachable by spending earned motes. There is deliberately
+ * no "buy motes" path — keeping the loop trust-first.
+ *
+ * EARN — collect a mote of light, first-light a lantern, receive an appreciation, claim a gift.
+ * SPEND — place a signpost/lantern, make a shrine offering, and (P3+) free-tier cosmetics.
+ */
+
+/** Motes granted for gathering one mote of light in the world (P2-CLI-05). */
+export const MOTE_COLLECT_VALUE = 3;
+
+/** One-time bonus to the traveler who is the *first* to light a given lantern (P2-DATA-01 earn). */
+export const FIRST_LIGHT_BONUS_MOTES = 2;

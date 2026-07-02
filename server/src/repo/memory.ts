@@ -17,6 +17,7 @@ import {
   footfallWarmth,
   FOOTPATH_TILE_RESOLUTION,
   type Trace,
+  type JournalEvent,
 } from '@wanderlight/shared';
 import type {
   AppreciateResult,
@@ -43,6 +44,10 @@ export function createMemoryRepository(): Repository {
   let heatBuffer: Array<{ tx: number; ty: number }> = [];
   /** Aggregated footfall: chunk id → (footpath-tile key → visit count). */
   const footfall = new Map<string, Map<string, number>>();
+  /** Append-only journal events per player, in insertion order. */
+  const journal = new Map<string, JournalEvent[]>();
+  /** Set of `${playerId}:${moteId}` keys enforcing mote-collection idempotency. */
+  const moteCollects = new Set<string>();
 
   function put(player: Player): Player {
     players.set(player.id, player);
@@ -164,7 +169,7 @@ export function createMemoryRepository(): Repository {
       return { applied: true, motes: updatedClaimant.motes };
     },
 
-    async lightLantern(traceId, fromId, warmthDelta): Promise<LightLanternResult> {
+    async lightLantern(traceId, fromId, warmthDelta, firstLightBonus): Promise<LightLanternResult> {
       const trace = traces.get(traceId);
       if (!trace) throw new Error(`Unknown trace ${traceId}`);
       const key = `${traceId}:${fromId}`;
@@ -175,7 +180,36 @@ export function createMemoryRepository(): Repository {
       const updated: Trace = { ...trace, litCount: trace.litCount + 1 };
       traces.set(traceId, updated);
       bumpWarmth(trace.chunkX, trace.chunkY, warmthDelta);
+      // First-ever lighting of this lantern earns the lighter a small bonus.
+      if (updated.litCount === 1 && firstLightBonus > 0) {
+        const lighter = players.get(fromId);
+        if (lighter) put({ ...lighter, motes: lighter.motes + firstLightBonus });
+      }
       return { applied: true, litCount: updated.litCount };
+    },
+
+    async collectMote(playerId, moteId, rewardMotes) {
+      const player = players.get(playerId);
+      if (!player) throw new Error(`Unknown player ${playerId}`);
+      const key = `${playerId}:${moteId}`;
+      if (moteCollects.has(key)) {
+        return { applied: false, motes: player.motes };
+      }
+      moteCollects.add(key);
+      const updated = put({ ...player, motes: player.motes + rewardMotes });
+      return { applied: true, motes: updated.motes };
+    },
+
+    async recordJournalEvent(playerId, kind, refId, now) {
+      const events = journal.get(playerId) ?? [];
+      events.push({ id: randomUUID(), playerId, kind, refId, createdAt: now });
+      journal.set(playerId, events);
+    },
+
+    async getJournal(playerId, limit) {
+      const events = journal.get(playerId) ?? [];
+      // Newest first, capped.
+      return [...events].reverse().slice(0, Math.max(0, limit));
     },
 
     async getShrine(cx, cy) {

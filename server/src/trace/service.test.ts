@@ -81,6 +81,13 @@ function stubRepo(over: Partial<Repository> = {}): Repository {
         motes: richPlayer.motes,
       };
     },
+    async collectMote() {
+      return { applied: true, motes: richPlayer.motes };
+    },
+    async recordJournalEvent() {},
+    async getJournal() {
+      return [];
+    },
     async recordHeatSamples() {},
     async aggregateFootpaths() {
       return { samplesProcessed: 0, chunksTouched: 0 };
