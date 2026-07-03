@@ -1,0 +1,359 @@
+{
+  "version": 2,
+  "task": "P3-CNT-01",
+  "status": "draft-pending-director-signoff",
+  "note": "Authored system-trace seed corpus (P3-CNT-01), superseding the partial P2-CNT-01 pass. 45 curated system-authored traces (5 per chunk across the 3x3 First Vale block, chunks x,y in {-1,0,1}, chunk size 64) so a community-less world still feels lived-in and every visited chunk shows >=1 seed (cold-start guardrail, scope risk gd-1). Placed via `npm run seed:world`. Signpost templateIds reference content/signpost-templates.json. Coordinates are world tiles. NOT approved to ship — awaiting director (Artur) sign-off on placement + tone (indication: director-signoff-not-self-granted).",
+  "traces": [
+    {
+      "type": "lantern",
+      "x": -44,
+      "y": 84,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -30,
+      "y": 94,
+      "payload": {
+        "templateId": "encourage-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": -16,
+      "y": 104,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -49,
+      "y": 114,
+      "payload": {
+        "templateId": "discover-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": -12,
+      "y": 80,
+      "payload": {
+        "templateId": "mystery-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 20,
+      "y": 84,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 34,
+      "y": 94,
+      "payload": {
+        "templateId": "encourage-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 48,
+      "y": 104,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 15,
+      "y": 114,
+      "payload": {
+        "templateId": "discover-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 52,
+      "y": 80,
+      "payload": {
+        "templateId": "mystery-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 84,
+      "y": 84,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 98,
+      "y": 94,
+      "payload": {
+        "templateId": "encourage-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 112,
+      "y": 104,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 79,
+      "y": 114,
+      "payload": {
+        "templateId": "discover-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 116,
+      "y": 80,
+      "payload": {
+        "templateId": "mystery-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": -44,
+      "y": 20,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -30,
+      "y": 30,
+      "payload": {
+        "templateId": "encourage-04",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": -16,
+      "y": 40,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -49,
+      "y": 50,
+      "payload": {
+        "templateId": "discover-04",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": -12,
+      "y": 16,
+      "payload": {
+        "templateId": "mystery-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 20,
+      "y": 20,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 34,
+      "y": 30,
+      "payload": {
+        "templateId": "encourage-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 48,
+      "y": 40,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 15,
+      "y": 50,
+      "payload": {
+        "templateId": "discover-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 52,
+      "y": 16,
+      "payload": {
+        "templateId": "mystery-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 84,
+      "y": 20,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 98,
+      "y": 30,
+      "payload": {
+        "templateId": "encourage-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 112,
+      "y": 40,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 79,
+      "y": 50,
+      "payload": {
+        "templateId": "discover-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 116,
+      "y": 16,
+      "payload": {
+        "templateId": "mystery-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": -44,
+      "y": -44,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -30,
+      "y": -34,
+      "payload": {
+        "templateId": "encourage-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": -16,
+      "y": -24,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": -49,
+      "y": -14,
+      "payload": {
+        "templateId": "discover-03",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": -12,
+      "y": -48,
+      "payload": {
+        "templateId": "mystery-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 20,
+      "y": -44,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 34,
+      "y": -34,
+      "payload": {
+        "templateId": "encourage-04",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 48,
+      "y": -24,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 15,
+      "y": -14,
+      "payload": {
+        "templateId": "discover-04",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 52,
+      "y": -48,
+      "payload": {
+        "templateId": "mystery-02",
+        "slots": {}
+      }
+    },
+    {
+      "type": "lantern",
+      "x": 84,
+      "y": -44,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 98,
+      "y": -34,
+      "payload": {
+        "templateId": "encourage-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "gift",
+      "x": 112,
+      "y": -24,
+      "payload": {}
+    },
+    {
+      "type": "signpost",
+      "x": 79,
+      "y": -14,
+      "payload": {
+        "templateId": "discover-01",
+        "slots": {}
+      }
+    },
+    {
+      "type": "signpost",
+      "x": 116,
+      "y": -48,
+      "payload": {
+        "templateId": "mystery-03",
+        "slots": {}
+      }
+    }
+  ]
+}

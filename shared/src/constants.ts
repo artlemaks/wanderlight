@@ -19,3 +19,11 @@ export const CHUNK_SIZE = 64;
  * Recorded so clients on different versions can detect a mismatch.
  */
 export const SEED_VERSION = 1;
+
+/**
+ * The world seed — the single number every deterministic generator (terrain, landmarks, motes of
+ * light) is derived from. Shared so the client and server agree: e.g. the server validates a
+ * mote-collection claim with the same seed the client used to spawn the mote. First Vale is fixed;
+ * alternate worlds would vary this.
+ */
+export const WORLD_SEED = 12345;

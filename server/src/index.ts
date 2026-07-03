@@ -1,53 +1,47 @@
-import Fastify from 'fastify';
-import { chunkId, loadConfig, SEED_VERSION } from '@wanderlight/shared';
+import { loadConfig } from '@wanderlight/shared';
 import { createErrorReporter } from './observability/reporter';
 import { createAnalyticsClient } from './observability/analytics';
+import { createRepository } from './repo/factory';
+import { loadCorpus } from './content/corpus';
+import { buildApp } from './app';
+import { buildScheduler } from './jobs';
+import { createPaymentProvider } from './payments/provider';
 
-// Thin P0 server: proves `@wanderlight/shared` is importable server-side and gives P1 a skeleton
-// to build on. Real routes/data land in P1 (P1-SRV-*). P0-INFRA-06 adds structured JSON logging
-// with a request id and a guarded Sentry error path; P0-ANL-01 adds a guarded PostHog client.
+// P1 server entrypoint: wires real dependencies (datastore, content corpus, guarded telemetry) into
+// the app factory and starts listening. The datastore is in-memory unless DATABASE_URL is set
+// (see repo/factory) — matching the guarded-integration pattern used for Sentry/PostHog.
 const config = loadConfig();
 
-const app = Fastify({
-  // pino → JSON logs. Prefer an inbound `x-request-id` (for cross-service tracing) and fall back to
-  // Fastify's own generator; the id is attached to every per-request log line as `reqId`.
-  logger: true,
-  requestIdHeader: 'x-request-id',
-  requestIdLogLabel: 'reqId',
-});
-
 async function main(): Promise<void> {
-  const reporter = await createErrorReporter(config.sentryDsn, app.log);
-  const analytics = await createAnalyticsClient(config.posthogKey, config.posthogHost, app.log);
+  const reporter = await createErrorReporter(config.sentryDsn, console);
+  const analytics = await createAnalyticsClient(config.posthogKey, config.posthogHost, console);
+  const repo = await createRepository(config.databaseUrl, console);
+  const corpus = await loadCorpus();
+  const payments = await createPaymentProvider(
+    config.paymentsProvider,
+    config.paymentsKey,
+    console,
+  );
 
-  // Route uncaught request errors to structured logs (with reqId) and the error reporter.
-  app.setErrorHandler((err, request, reply) => {
-    request.log.error({ err }, 'request error');
-    reporter.captureException(err, { reqId: request.id, method: request.method, url: request.url });
-    const status = err.statusCode ?? 500;
-    reply.status(status).send({ error: err.name || 'InternalServerError', reqId: request.id });
+  const app = buildApp({
+    repo,
+    corpus,
+    analytics,
+    reporter,
+    payments,
+    adminToken: config.adminToken,
   });
-
-  app.get('/health', async () => ({
-    status: 'ok',
-    seedVersion: SEED_VERSION,
-    originChunk: chunkId(0, 0),
-  }));
-
-  // Dev-only probe to validate the Sentry path end-to-end (P0-INFRA-06 AC). Never mounted in prod.
-  if (process.env.NODE_ENV !== 'production') {
-    app.get('/debug/boom', async () => {
-      throw new Error('Intentional test error from /debug/boom');
-    });
-  }
-
   const port = Number(process.env.PORT ?? 3000);
 
-  // Flush telemetry on shutdown so buffered errors/events aren't lost.
+  // Background jobs (footpath aggregation, fade/GC, payment reconciliation) run on interval timers.
+  const scheduler = buildScheduler(repo, app.log, payments);
+  scheduler.start();
+
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
+    scheduler.stop();
     await app.close();
-    await Promise.allSettled([reporter.flush(), analytics.shutdown()]);
+    await Promise.allSettled([reporter.flush(), analytics.shutdown(), repo.close()]);
     process.exit(0);
   };
   process.once('SIGTERM', () => void shutdown('SIGTERM'));
@@ -59,12 +53,13 @@ async function main(): Promise<void> {
       address,
       analyticsConfigured: Boolean(config.posthogKey),
       errorTracking: Boolean(config.sentryDsn),
+      datastore: config.databaseUrl ? 'postgres' : 'memory',
     },
     'server listening',
   );
 }
 
 main().catch((err) => {
-  app.log.error(err, 'failed to start server');
+  console.error('failed to start server', err);
   process.exit(1);
 });

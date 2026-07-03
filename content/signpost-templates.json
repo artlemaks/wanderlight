@@ -1,0 +1,248 @@
+{
+  "version": 1,
+  "task": "P1-CNT-01",
+  "status": "draft-pending-director-signoff",
+  "categories": ["encourage", "warn", "discover", "gift", "mystery"],
+  "templates": [
+    {
+      "id": "encourage-01",
+      "category": "encourage",
+      "text": "Keep going, wanderer - a {adjective} {place} waits just ahead.",
+      "slots": ["adjective", "place"]
+    },
+    {
+      "id": "encourage-02",
+      "category": "encourage",
+      "text": "You are braver than the {creature} that guards the {place}.",
+      "slots": ["creature", "place"]
+    },
+    {
+      "id": "encourage-03",
+      "category": "encourage",
+      "text": "Rest a while, then rise and {action} toward the {direction}.",
+      "slots": ["action", "direction"]
+    },
+    {
+      "id": "encourage-04",
+      "category": "encourage",
+      "text": "Every {adjective} step carries you closer to {emotion}.",
+      "slots": ["adjective", "emotion"]
+    },
+    {
+      "id": "encourage-05",
+      "category": "encourage",
+      "text": "Trust the path; it has led {adjective} travelers to the {place} before.",
+      "slots": ["adjective", "place"]
+    },
+    {
+      "id": "encourage-06",
+      "category": "encourage",
+      "text": "Let the {time} light remind you how far you have come.",
+      "slots": ["time"]
+    },
+    {
+      "id": "encourage-07",
+      "category": "encourage",
+      "text": "Breathe in the {adjective} air and {action} on, friend.",
+      "slots": ["adjective", "action"]
+    },
+    {
+      "id": "encourage-08",
+      "category": "encourage",
+      "text": "Your {emotion} heart is always welcome in this {place}.",
+      "slots": ["emotion", "place"]
+    },
+    {
+      "id": "warn-01",
+      "category": "warn",
+      "text": "Tread softly - the {place} ahead grows {adjective} come {time}.",
+      "slots": ["place", "adjective", "time"]
+    },
+    {
+      "id": "warn-02",
+      "category": "warn",
+      "text": "Mind the {direction} path; the {creature} there prefers a quiet passing.",
+      "slots": ["direction", "creature"]
+    },
+    {
+      "id": "warn-03",
+      "category": "warn",
+      "text": "The {adjective} mist gathers near the {place}. Wander with care.",
+      "slots": ["adjective", "place"]
+    },
+    {
+      "id": "warn-04",
+      "category": "warn",
+      "text": "Best not to {action} past this stone once the {time} settles in.",
+      "slots": ["action", "time"]
+    },
+    {
+      "id": "warn-05",
+      "category": "warn",
+      "text": "A {adjective} slope waits to the {direction}. Step gently, wanderer.",
+      "slots": ["adjective", "direction"]
+    },
+    {
+      "id": "warn-06",
+      "category": "warn",
+      "text": "The {creature} sleeps nearby - pass it with a {emotion} hush.",
+      "slots": ["creature", "emotion"]
+    },
+    {
+      "id": "warn-07",
+      "category": "warn",
+      "text": "Loose {thing} lies along the {direction} trail. Watch your footing.",
+      "slots": ["thing", "direction"]
+    },
+    {
+      "id": "warn-08",
+      "category": "warn",
+      "text": "Cool winds cross the {place} at {time}. Carry a {adjective} heart.",
+      "slots": ["place", "time", "adjective"]
+    },
+    {
+      "id": "discover-01",
+      "category": "discover",
+      "text": "Follow the {direction} trail to find a {adjective} {place}.",
+      "slots": ["direction", "adjective", "place"]
+    },
+    {
+      "id": "discover-02",
+      "category": "discover",
+      "text": "A hidden {thing} rests beneath the {adjective} {creature}'s watch.",
+      "slots": ["thing", "adjective", "creature"]
+    },
+    {
+      "id": "discover-03",
+      "category": "discover",
+      "text": "Look {direction} at {time} to see the {place} come alive.",
+      "slots": ["direction", "time", "place"]
+    },
+    {
+      "id": "discover-04",
+      "category": "discover",
+      "text": "Something {adjective} waits in the hush where the {creature} sings.",
+      "slots": ["adjective", "creature"]
+    },
+    {
+      "id": "discover-05",
+      "category": "discover",
+      "text": "Beyond the {place} lies a {adjective} view worth the {action}.",
+      "slots": ["place", "adjective", "action"]
+    },
+    {
+      "id": "discover-06",
+      "category": "discover",
+      "text": "The {time} reveals a {thing} the bright hours keep hidden.",
+      "slots": ["time", "thing"]
+    },
+    {
+      "id": "discover-07",
+      "category": "discover",
+      "text": "Turn {direction} and a {adjective} {place} will quietly greet you.",
+      "slots": ["direction", "adjective", "place"]
+    },
+    {
+      "id": "discover-08",
+      "category": "discover",
+      "text": "Seek the {creature} to learn where the {thing} likes to hide.",
+      "slots": ["creature", "thing"]
+    },
+    {
+      "id": "gift-01",
+      "category": "gift",
+      "text": "I left a {adjective} {thing} by the {place} for you to find.",
+      "slots": ["adjective", "thing", "place"]
+    },
+    {
+      "id": "gift-02",
+      "category": "gift",
+      "text": "Take this {emotion} moment as a small gift from a stranger.",
+      "slots": ["emotion"]
+    },
+    {
+      "id": "gift-03",
+      "category": "gift",
+      "text": "A {adjective} song lingers to the {direction} - it is yours to keep.",
+      "slots": ["adjective", "direction"]
+    },
+    {
+      "id": "gift-04",
+      "category": "gift",
+      "text": "For you: a {thing} gathered gently under the {time} sky.",
+      "slots": ["thing", "time"]
+    },
+    {
+      "id": "gift-05",
+      "category": "gift",
+      "text": "May this {adjective} {place} give you the rest that I found here.",
+      "slots": ["adjective", "place"]
+    },
+    {
+      "id": "gift-06",
+      "category": "gift",
+      "text": "Here waits a {emotion} welcome, wanderer, however far you {action}.",
+      "slots": ["emotion", "action"]
+    },
+    {
+      "id": "gift-07",
+      "category": "gift",
+      "text": "I saved a {adjective} glimpse of the {creature} just for you.",
+      "slots": ["adjective", "creature"]
+    },
+    {
+      "id": "gift-08",
+      "category": "gift",
+      "text": "Carry this {thing} onward and leave a {adjective} one behind.",
+      "slots": ["thing", "adjective"]
+    },
+    {
+      "id": "mystery-01",
+      "category": "mystery",
+      "text": "Who left the {adjective} {thing} resting beside the {place}?",
+      "slots": ["adjective", "thing", "place"]
+    },
+    {
+      "id": "mystery-02",
+      "category": "mystery",
+      "text": "They say a {creature} walks the {direction} path at {time}.",
+      "slots": ["creature", "direction", "time"]
+    },
+    {
+      "id": "mystery-03",
+      "category": "mystery",
+      "text": "No one quite knows why the {place} feels so {emotion}.",
+      "slots": ["place", "emotion"]
+    },
+    {
+      "id": "mystery-04",
+      "category": "mystery",
+      "text": "A {adjective} light flickers where no {creature} should be.",
+      "slots": ["adjective", "creature"]
+    },
+    {
+      "id": "mystery-05",
+      "category": "mystery",
+      "text": "Something {adjective} hums beneath the {place}. Listen a while.",
+      "slots": ["adjective", "place"]
+    },
+    {
+      "id": "mystery-06",
+      "category": "mystery",
+      "text": "The {thing} appears only to those who {action} entirely alone.",
+      "slots": ["thing", "action"]
+    },
+    {
+      "id": "mystery-07",
+      "category": "mystery",
+      "text": "At {time}, the {direction} wind carries a {adjective} whisper.",
+      "slots": ["time", "direction", "adjective"]
+    },
+    {
+      "id": "mystery-08",
+      "category": "mystery",
+      "text": "Follow the {creature} and you may never {action} quite the same.",
+      "slots": ["creature", "action"]
+    }
+  ]
+}
